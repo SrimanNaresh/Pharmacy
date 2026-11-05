@@ -72,6 +72,8 @@ export const itemMasterApi = {
   remove: (id) => api.delete(`/item-master/${id}`).then((r) => r.data),
   // rows: [{ itemId, ...changed fields }]; all saved or none
   bulkUpdate: (rows) => api.post('/item-master/bulk-update', { rows }).then((r) => r.data),
+  // Excel upload: rows from the template; { added, updated }, or 400 with { errors: [{ row, name, error }] }. Admin only.
+  importRows: (rows) => api.post('/item-master/import', { rows }, { timeout: 600000 }).then((r) => r.data),
   // Pick-lists: { unit, generic, manufacturer, category, potency: [{ id, name }], pack: [name] }
   lists: () => api.get('/item-master/lists').then((r) => r.data),
   addListValue: (field, name) => api.post(`/item-master/lists/${field}`, { name }).then((r) => r.data),

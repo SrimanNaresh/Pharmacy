@@ -75,10 +75,10 @@ function UserMenu() {
 }
 
 function AppLayout({ appName }) {
-  // Open by default. On desktop the menu button moves the menu between the
-  // top bar and a left-side column (remembered in this browser); on a phone it
-  // opens / closes the dropdown menu.
-  const [navOpen, setNavOpen] = useState(true);
+  // On desktop the menu is always shown and the menu button moves it between
+  // the top bar and a left-side column (remembered in this browser); on a
+  // phone it starts closed and the button opens / closes the dropdown menu.
+  const [navOpen, setNavOpen] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   const [navSide, setNavSide] = useState(() => {
     try { return localStorage.getItem('nav-side') === '1'; } catch { return false; }
   });

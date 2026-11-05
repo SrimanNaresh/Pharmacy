@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Layers, Search, Save, Undo2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Layers, Search, Save, Undo2, ChevronLeft, ChevronRight, Download, Upload, FileSpreadsheet, X } from 'lucide-react';
 import { CardHeader, Spinner, EmptyState, Toast } from '../../components/ui.jsx';
 import { useToast } from '../../hooks/useToast.js';
 import { itemMasterApi } from '../../api/client.js';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 import { usePickLists } from './usePickLists.js';
+import { downloadItemTemplate, readItemFile } from '../../utils/itemTemplate.js';
 
 const PAGE = 50;
 
@@ -29,6 +30,8 @@ const asText = (col, v) => (v == null ? '' : ['MRP', 'CGSTPercent', 'SGSTPercent
 // Pharmacy > Item > Bulk Update: the item list as an editable grid. Changes are
 // kept across pages and searches until Save sends them all at once; if any
 // row is wrong nothing is saved and those rows turn red with the reason.
+// Template downloads an Excel file of the Item Master fields (blank, or with
+// the current items); Upload adds / updates items from it, all or nothing.
 export default function ItemBulkUpdate() {
   const { toast, show } = useToast();
   const { lists } = usePickLists((m) => show(m, 'error'));
@@ -40,6 +43,9 @@ export default function ItemBulkUpdate() {
   const [changes, setChanges] = useState({}); // itemId -> { key: value }
   const [errors, setErrors] = useState({}); // itemId -> reason
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(''); // 'template' | 'export' | 'upload' while working
+  const [uploadErrors, setUploadErrors] = useState(null); // { file, errors: [{ row, name, error }] }
+  const fileRef = useRef(null);
 
   const load = useCallback(() => itemMasterApi.list()
     .then(setRows).catch(() => show('Failed to load items', 'error')).finally(() => setLoading(false)), [show]);
@@ -94,6 +100,42 @@ export default function ItemBulkUpdate() {
       show(data?.error || 'Save failed', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const download = async (withItems) => {
+    setBusy(withItems ? 'export' : 'template');
+    try {
+      await downloadItemTemplate(withItems ? rows : [], lists);
+    } catch {
+      show('Could not create the Excel file', 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (count && !confirm(`You have ${count} unsaved change(s) here. Upload anyway? They will be discarded.`)) return;
+    setBusy('upload');
+    setUploadErrors(null);
+    try {
+      const { rows: fileRows, missing } = await readItemFile(file);
+      if (missing.length) return show(`The file has no "${missing.join('", "')}" column — use the downloaded template`, 'error');
+      if (!fileRows.length) return show('The file has no item rows', 'error');
+      const r = await itemMasterApi.importRows(fileRows);
+      show(`Upload done: ${r.added} added, ${r.updated} updated`, 'success');
+      setChanges({});
+      setErrors({});
+      await load();
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.errors) setUploadErrors({ file: file.name, errors: data.errors });
+      show(data?.error || (err.response ? 'Upload failed' : 'Could not read the file — save it as .xlsx and try again'), 'error');
+    } finally {
+      setBusy('');
     }
   };
 
@@ -152,6 +194,16 @@ export default function ItemBulkUpdate() {
                 <option value="">All categories</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              <button type="button" className="btn-secondary" onClick={() => download(false)} disabled={!!busy} title="Blank Excel template with the Item Master fields">
+                <FileSpreadsheet size={16} /> {busy === 'template' ? 'Preparing...' : 'Template'}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => download(true)} disabled={!!busy || !rows.length} title="All items in the template layout — edit and upload back">
+                <Download size={16} /> {busy === 'export' ? 'Preparing...' : 'Download items'}
+              </button>
+              <button type="button" className="btn-primary" onClick={() => fileRef.current?.click()} disabled={!!busy} title="Add / update items from a filled template (.xlsx)">
+                <Upload size={16} /> {busy === 'upload' ? 'Uploading...' : 'Upload'}
+              </button>
+              <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={upload} />
               {count > 0 && (
                 <>
                   <button type="button" className="btn-secondary" onClick={discard} disabled={saving}><Undo2 size={16} /> Discard changes</button>
@@ -162,12 +214,39 @@ export default function ItemBulkUpdate() {
           }
         />
 
+        {uploadErrors && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-red-700">
+                {uploadErrors.file}: {uploadErrors.errors.length} row(s) need fixing — nothing was saved. Fix them in the file and upload again.
+              </p>
+              <button type="button" className="rounded p-0.5 text-red-500 hover:bg-red-100" onClick={() => setUploadErrors(null)} aria-label="Close"><X size={16} /></button>
+            </div>
+            <div className="max-h-48 overflow-y-auto rounded border border-red-100 bg-white">
+              <table className="w-full text-left text-[13px]">
+                <thead className="sticky top-0 bg-red-100/70 text-red-800">
+                  <tr><th className="w-20 px-2 py-1 text-center">Excel row</th><th className="px-2 py-1">Item Name</th><th className="px-2 py-1">Problem</th></tr>
+                </thead>
+                <tbody>
+                  {uploadErrors.errors.map((e, i) => (
+                    <tr key={i} className="border-t border-red-50">
+                      <td className="px-2 py-1 text-center tabular-nums">{e.row}</td>
+                      <td className="px-2 py-1">{e.name || '—'}</td>
+                      <td className="px-2 py-1 text-red-700">{e.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <datalist id="bulk-pack-values">{lists.pack.map((p) => <option key={p} value={p} />)}</datalist>
 
         {loading ? (
           <Spinner />
         ) : filtered.length === 0 ? (
-          <EmptyState message="No items found." />
+          <EmptyState message={rows.length ? 'No items found.' : 'No items yet — download the Template, fill it in and Upload it, or add items on Item > Master.'} />
         ) : (
           <>
             <div className="max-h-[70vh] overflow-auto rounded-lg border border-ink-200">

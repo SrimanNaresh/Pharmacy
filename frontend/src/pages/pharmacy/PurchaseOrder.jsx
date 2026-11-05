@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Plus, Trash2, Save, X, List, ChevronRight, ChevronLeft, ListPlus, Search } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Save, X, List, ChevronRight, ChevronLeft, ListPlus, Search, Pencil, Check } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
@@ -79,6 +79,10 @@ export default function PurchaseOrder() {
   const [showDetails, setShowDetails] = useState(false);
   const [orderDate, setOrderDate] = useState(today());
   const [lines, setLines] = useState([emptyLine()]);
+  // Phones: the item being entered (or edited, when its key is already in `lines`)
+  // before "Add to list" puts it into `lines`.
+  const [draft, setDraft] = useState(emptyLine);
+  const draftRef = useRef(null);
   // Round Off: rounds the Sum of Total to the nearest rupee (on for a new order).
   const [roundOn, setRoundOn] = useState(true);
   const [showOptional, setShowOptional] = useState(false);
@@ -124,6 +128,7 @@ export default function PurchaseOrder() {
       setDetails(o.VendorDetails || '');
       setOrderDate(String(o.OrderDate).slice(0, 10));
       setRoundOn(Number(o.RoundOff) !== 0);
+      setDraft(emptyLine());
       setLines(o.lines.map((l) => ({
         ...emptyLine(), lineId: l.LineId, itemId: String(l.ItemId), generic: l.GenericName || '', manufacturer: l.Manufacturer || '',
         hsn: l.HSNCode || '', category: l.Category || '', pack: l.Pack || '', unit: l.Unit || '', mrp: numStr(l.MRP), pRate: numStr(l.PRate),
@@ -159,6 +164,35 @@ export default function PurchaseOrder() {
     return [...ls.slice(0, i + 1), emptyLine(), ...ls.slice(i + 1)];
   });
   const removeLine = (key) => setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : [emptyLine()]));
+
+  // Phones: the entry form adds its item to the list (or updates the one being
+  // edited) and clears for the next item; the list's Edit loads a line back.
+  const draftEditing = draft.itemId && lines.some((l) => l.key === draft.key);
+  const pickDraft = (itemId) => {
+    const it = itemById.get(itemId);
+    if (it) setDraft((d) => ({ ...lineFromItem(it), key: d.key, lineId: d.itemId === itemId ? d.lineId : null }));
+  };
+  const addDraft = () => {
+    if (!draft.itemId) return show('Pick an item first', 'error');
+    const problem = lineProblem(draft);
+    if (problem) return show(problem, 'error');
+    if (lines.some((l) => l.itemId === draft.itemId && l.key !== draft.key)) return show('This item is already in the list — edit it there', 'error');
+    setLines((ls) => (draftEditing
+      ? ls.map((l) => (l.key === draft.key ? draft : l))
+      : [...ls.filter((l) => l.itemId), draft]));
+    show(draftEditing ? 'Item updated' : 'Item added to the list', 'success');
+    setDraft(emptyLine());
+    setTimeout(() => draftRef.current?.querySelector('input')?.focus(), 50);
+  };
+  const editLine = (l) => {
+    setDraft({ ...l });
+    draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const deleteLine = (l) => {
+    if (!confirm(`Remove ${itemById.get(l.itemId)?.Name || 'this item'} from the order?`)) return;
+    removeLine(l.key);
+    if (draft.key === l.key) setDraft(emptyLine());
+  };
   const pickItem = (key, itemId) => {
     const it = itemById.get(itemId);
     if (it) setLines((ls) => ls.map((l) => (l.key === key ? { ...lineFromItem(it), key, lineId: null } : l)));
@@ -174,14 +208,17 @@ export default function PurchaseOrder() {
     setItems((all) => (isNew ? [...all, it] : all.map((i) => (String(i.ItemId) === id ? it : i))));
     if (isNew) {
       setLines((ls) => ls.map((l) => (l.key === itemForm.rowKey ? { ...lineFromItem(it), key: l.key, lineId: null } : l)));
+      setDraft((d) => (d.key === itemForm.rowKey ? { ...lineFromItem(it), key: d.key, lineId: d.lineId } : d));
       show(`Added item ${it.Name} (${it.ItemCode})`, 'success');
       focusItemBox(itemForm.rowKey, 1);
     } else {
       // Rows already holding the item take its new details; their prices and quantities stay.
-      setLines((ls) => ls.map((l) => (l.itemId !== id ? l : {
+      const withDetails = (l) => (l.itemId !== id ? l : {
         ...l, generic: it.GenericName || '', manufacturer: it.ManufacturerName || '', hsn: it.HSNCode || '',
         category: it.Category || '', pack: it.Pack || '', unit: it.UnitName || '',
-      })));
+      });
+      setLines((ls) => ls.map(withDetails));
+      setDraft(withDetails);
       show(`${it.Name} updated`, 'success');
       focusItemBox(itemForm.rowKey);
     }
@@ -193,6 +230,7 @@ export default function PurchaseOrder() {
       await itemMasterApi.remove(opt.value);
       setItems((all) => all.filter((i) => String(i.ItemId) !== String(opt.value)));
       setLines((ls) => ls.map((l) => (l.itemId === String(opt.value) ? { ...emptyLine(), key: l.key } : l)));
+      setDraft((d) => (d.itemId === String(opt.value) ? { ...emptyLine(), key: d.key } : d));
       show(`Deleted ${opt.label}`, 'success');
     } catch (err) {
       show(err.response?.data?.error || 'Could not delete the item', 'error');
@@ -242,13 +280,14 @@ export default function PurchaseOrder() {
   const netAmount = total + roundOff;
 
   const reset = () => {
-    setEditing(null); setVendorId(''); setDetails(''); setShowDetails(false); setOrderDate(today()); setLines([emptyLine()]); setRoundOn(true);
+    setEditing(null); setVendorId(''); setDetails(''); setShowDetails(false); setOrderDate(today()); setLines([emptyLine()]); setDraft(emptyLine()); setRoundOn(true);
   };
 
   const save = async (e) => {
     e.preventDefault();
     if (!vendorId) return show('Vendor Name is required', 'error');
     if (!orderDate) return show('Date is required', 'error');
+    if (draft.itemId) return show(draftEditing ? 'Tap "Update item" (or Cancel) for the item being edited first' : 'Tap "Add to list" for the item you are entering, or clear it', 'error');
     if (!filled.length) return show('Add at least one item', 'error');
     if (problems.size) return show('Fix the rows marked in red first', 'error');
     setSaving(true);
@@ -287,7 +326,7 @@ export default function PurchaseOrder() {
 
   return (
     <div>
-      <div className="card">
+      <div className="card max-md:!px-3">
         <form onSubmit={save}>
           <CardHeader
             icon={ShoppingCart}
@@ -304,7 +343,7 @@ export default function PurchaseOrder() {
             <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-800">{editing.locked}</div>
           )}
 
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap">
             <div className="w-full sm:w-80">
               <label className="label">Vendor Name *</label>
               <div className="flex gap-1">
@@ -323,7 +362,7 @@ export default function PurchaseOrder() {
                 </button>
               </div>
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <label className="label">Date *</label>
               <input type="date" className="input" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
             </div>
@@ -347,16 +386,16 @@ export default function PurchaseOrder() {
           )}
 
           <div className="mt-3 flex items-center justify-between">
-            <button type="button" className="btn-secondary py-1" onClick={() => setBulk(bulk ? null : { search: '', category: '', manufacturer: '', ticked: new Set() })}>
+            <button type="button" className="btn-secondary whitespace-nowrap py-1" onClick={() => setBulk(bulk ? null : { search: '', category: '', manufacturer: '', ticked: new Set() })}>
               <ListPlus size={15} /> Bulk add items
             </button>
-            <span className="text-xs text-ink-400">← → move between boxes · ↑ ↓ move between rows</span>
+            <span className="hidden text-xs text-ink-400 md:inline">← → move between boxes · ↑ ↓ move between rows</span>
           </div>
 
           {bulk && (
             <div className="mt-2 rounded-lg border border-ink-200 bg-ink-50/50 p-2">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative w-56">
+                <div className="relative w-full sm:w-56">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
                   <input autoFocus className="input py-1 pl-8" placeholder="Search items..." value={bulk.search} onChange={(e) => setBulk((b) => ({ ...b, search: e.target.value }))} />
                 </div>
@@ -393,7 +432,139 @@ export default function PurchaseOrder() {
             </div>
           )}
 
-          <div className="mt-2 overflow-x-auto">
+          {/* Phones: an entry form for one item ("Add to list" moves it into the list
+              below and clears the form), the list with Edit / Delete, then the totals. */}
+          <div className="mt-3 space-y-2.5 md:hidden">
+            {(() => {
+              const l = draft;
+              const c = calcOf(l);
+              const bad = l.itemId ? lineProblem(l) : null;
+              const setD = (patch) => setDraft((d) => ({ ...d, ...patch }));
+              // Three rows of five, in the order table's column order, lined up as columns:
+              // Category · Pack · Unit · MRP · Old Price / P.Rate · Free · Disc % · Qty · Amount /
+              // GST % · CGST % · SGST % · GST Amt · Total. Boxes are editable; the shaded ones are shown only.
+              const fit = (v) => {
+                const n = String(v ?? '').length;
+                return n >= 9 ? '!text-[9px] tracking-tighter' : n >= 7 ? '!text-[10.5px] tracking-tight' : '!text-[12px]';
+              };
+              const head = (label) => <span className="mb-0.5 block truncate text-center text-[10px] font-semibold text-ink-500">{label}</span>;
+              const num = (label, key, { onChange, className = '' } = {}) => (
+                <label className="block min-w-0">
+                  {head(label)}
+                  <input
+                    type="number" inputMode="decimal" min="0" step="any" className={`input no-spin !min-h-[30px] !px-0.5 !py-0.5 text-center tabular-nums ${fit(l[key])} ${className}`}
+                    value={l[key]} disabled={!l.itemId} onChange={(e) => setD(onChange ? onChange(e.target.value) : { [key]: e.target.value })}
+                  />
+                </label>
+              );
+              const show = (label, value, className = '') => (
+                <div className="min-w-0">
+                  {head(label)}
+                  <div title={value} className={`flex min-h-[30px] items-center justify-center truncate rounded-lg bg-ink-50 px-0.5 text-center tabular-nums text-ink-600 ${fit(value)} ${className}`}>{value || '—'}</div>
+                </div>
+              );
+              return (
+                <div ref={draftRef} className={`scroll-mt-16 overflow-hidden rounded-xl border bg-white shadow-sm ${draftEditing ? 'border-amber-300' : 'border-brand-200'}`}>
+                  <div className={`flex items-center gap-2 border-b px-2.5 py-2 ${draftEditing ? 'border-amber-100 bg-amber-50' : 'border-ink-100 bg-brand-50/60'}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white ${draftEditing ? 'bg-amber-500' : 'bg-brand-600'}`}>
+                      {draftEditing ? `Edit #${lines.findIndex((x) => x.key === l.key) + 1}` : 'New item'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <SearchPick className="input" placeholder="Search item..." options={itemOptions} value={l.itemId} onChange={pickDraft} actions={itemActions(l.key)} />
+                    </div>
+                    {l.itemId && (
+                      <button type="button" className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100" title={draftEditing ? 'Cancel edit' : 'Clear'} onClick={() => setDraft(emptyLine())}><X size={16} /></button>
+                    )}
+                  </div>
+                  {l.itemId ? (
+                    <div className="space-y-2 p-2">
+                      <div className="grid grid-cols-5 gap-x-1.5 gap-y-2">
+                        {show('Category', l.category)}
+                        {show('Pack', l.pack)}
+                        {show('Unit', l.unit)}
+                        {num('MRP', 'mrp')}
+                        {show('Old Price', money(lastRates[l.itemId] ?? 0), '!bg-amber-50 text-amber-800')}
+                        {num('P.Rate', 'pRate', { className: Number(l.pRate) > Number(l.mrp) ? '!border-red-400 bg-red-50 text-red-700' : '' })}
+                        {num('Free', 'free')}
+                        {num('Disc %', 'disc')}
+                        {num('Qty', 'qty')}
+                        {show('Amount', money(c.amount))}
+                        {num('GST %', 'gst', { onChange: splitGst })}
+                        {num('CGST %', 'cgst', { onChange: (v) => ({ cgst: v, gst: sumStr(v || null, l.sgst || null) }) })}
+                        {num('SGST %', 'sgst', { onChange: (v) => ({ sgst: v, gst: sumStr(l.cgst || null, v || null) }) })}
+                        {show('GST Amt', money(c.gstAmount))}
+                        {show('Total', money(c.total), '!bg-brand-50 font-bold text-brand-800')}
+                      </div>
+                      {bad && <p className="rounded-md bg-red-50 px-2 py-1 text-[12px] text-red-600">{bad}</p>}
+                      <div className="flex gap-2">
+                        {draftEditing && (
+                          <button type="button" className="btn-secondary flex-1" onClick={() => setDraft(emptyLine())}><X size={16} /> Cancel</button>
+                        )}
+                        <button type="button" className="btn-primary flex-[2]" onClick={addDraft}>
+                          {draftEditing ? <><Check size={16} /> Update item</> : <><Plus size={16} /> Add to list</>}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="px-3 py-2.5 text-[12px] text-ink-400">Search and pick an item, fill in its rate and quantity, then tap <span className="font-semibold text-brand-700">Add to list</span>.</p>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-ink-100 bg-ink-50 px-3 py-2">
+                <span className="text-[13px] font-semibold text-ink-700">Order items</span>
+                <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700">{filled.length}</span>
+              </div>
+              {filled.length === 0 && <p className="px-3 py-4 text-center text-[12px] text-ink-400">No items yet — add them above.</p>}
+              {filled.map((l, i) => {
+                const c = calcOf(l);
+                const bad = problems.get(l.key);
+                const gst = Number(l.cgst || 0) + Number(l.sgst || 0);
+                const active = draftEditing && draft.key === l.key;
+                return (
+                  <div key={l.key} className={`flex items-start gap-2 border-t border-ink-100 px-3 py-2 first:border-t-0 ${active ? 'bg-amber-50' : bad ? 'bg-red-50' : ''}`}>
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-600">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-[13px] font-medium leading-snug text-ink-800">{itemById.get(l.itemId)?.Name || 'Item'}</p>
+                      <p className="text-[11px] leading-snug text-ink-500">
+                        Qty {Number(l.qty) || 0}{Number(l.free) ? ` + ${Number(l.free)} free` : ''} × ₹{money(l.pRate)}
+                        {Number(l.disc) ? ` · Disc ${Number(l.disc)}%` : ''} · GST {gst}%
+                      </p>
+                      {bad && <p className="text-[11px] text-red-600">{bad}</p>}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end">
+                      <span className="text-[13px] font-bold tabular-nums text-brand-800">₹{money(c.total)}</span>
+                      <div className="mt-0.5 flex gap-1">
+                        <button type="button" className="rounded-lg border border-brand-100 p-1 text-brand-600 hover:bg-brand-50" title="Edit" onClick={() => editLine(l)}><Pencil size={14} /></button>
+                        <button type="button" className="rounded-lg border border-red-100 p-1 text-red-500 hover:bg-red-50" title="Delete" onClick={() => deleteLine(l)}><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-ink-600">Sum of Total <span className="text-xs text-ink-400">· {filled.length} item(s)</span></span>
+                <span className="font-semibold tabular-nums text-ink-900">{money(total)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2">
+                <label className="inline-flex items-center gap-2 text-ink-600">
+                  <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
+                </label>
+                <span className={`tabular-nums ${roundOff < 0 ? 'text-red-600' : 'text-ink-700'}`}>{roundOff > 0 ? '+' : ''}{money(roundOff)}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-b-xl bg-brand-600 px-3 py-2.5 text-white">
+                <span className="font-semibold">Net Amount</span>
+                <span className="text-lg font-bold tabular-nums">₹{money(netAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 hidden overflow-x-auto md:block">
             {/* Fixed layout: each column has a share of the width, so the table fits the
                 screen without scrolling; opening the optional columns lets it scroll. */}
             <table className={`w-full table-fixed border-collapse text-left text-[12px] `} {...gridKeys}>
@@ -499,7 +670,7 @@ export default function PurchaseOrder() {
             </table>
           </div>
 
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button type="button" className="btn-secondary" onClick={() => (editing ? navigate('/pharmacy/purchase-order-list') : reset())}>
               <X size={16} /> Cancel
             </button>

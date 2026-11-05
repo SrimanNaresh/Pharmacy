@@ -4,7 +4,7 @@ import { CURRENT_STOCK } from '../utils/stockEvents.js';
 
 // Pharmacy > Item: Item Master (add / edit; stock itself changes only through
 // Stock In, Sales, Returns and Stock Adjustment), Item List and Bulk Update,
-// plus the pick-lists the Item form uses. The older /pharmacy-items route stays for imports and other screens.
+// Excel import, plus the pick-lists the Item form uses.
 const router = Router();
 
 // Pick-lists: field -> table, id column, and the item column it fills. Type /
@@ -280,6 +280,149 @@ router.put('/:id', async (req, res) => {
     if (!upd.rowsAffected[0]) return res.status(404).json({ error: 'Item not found' });
     res.json({ ItemId: itemId });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import from the Excel template (Item > Bulk Update > Upload). Body: { rows:
+// [{ row, itemCode, name, pack, unit, hsnCode, mrp, cgstPercent, sgstPercent,
+// rack, boxNo, generic, manufacturer, category, potency, schedule, status }] }.
+// A row with an Item Code updates that item; otherwise one with the same Item
+// Name (ignoring case) is updated, else a new item is added. Pick-list values
+// not on the list yet are added. All rows are saved or none: bad rows come back
+// as { errors: [{ row, name, error }] }. Admin only.
+const IMPORT_MAX = 5000;
+router.post('/import', async (req, res) => {
+  if (req.user?.role !== 'Admin') return res.status(403).json({ error: 'Only an Admin can import items' });
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'The file has no item rows' });
+  if (rows.length > IMPORT_MAX) return res.status(400).json({ error: `At most ${IMPORT_MAX} rows at a time` });
+
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  try {
+    await tx.begin();
+    const errors = [];
+
+    // Pick-list values: add the missing ones (or bring deleted ones back), then
+    // keep every list in memory as lower-case name -> { id, name }.
+    const lists = {};
+    for (const field of Object.keys(LISTS)) {
+      const L = LISTS[field];
+      const wanted = new Map();
+      for (const r of rows) {
+        const name = text(r[field]);
+        if (!name) continue;
+        if (name.length > L.max) errors.push({ row: r.row, name: text(r.name), error: `${L.label} must be at most ${L.max} characters` });
+        else if (!wanted.has(name.toLowerCase())) wanted.set(name.toLowerCase(), name);
+      }
+      const all = await new sql.Request(tx).query(`SELECT ${L.id} AS id, Name AS name, IsActive FROM ${L.table}`);
+      const byName = new Map();
+      for (const v of all.recordset) {
+        const k = v.name.trim().toLowerCase();
+        if (!byName.has(k) || v.IsActive) byName.set(k, v);
+      }
+      for (const [k, name] of wanted) {
+        const hit = byName.get(k);
+        if (hit && !hit.IsActive) {
+          await new sql.Request(tx).input('id', sql.Int, hit.id).query(`UPDATE ${L.table} SET IsActive = 1 WHERE ${L.id} = @id`);
+        } else if (!hit) {
+          const ins = await new sql.Request(tx).input('name', sql.NVarChar, name)
+            .query(`INSERT INTO ${L.table} (Name) OUTPUT INSERTED.${L.id} AS id, INSERTED.Name AS name VALUES (@name)`);
+          byName.set(k, ins.recordset[0]);
+        }
+      }
+      lists[field] = byName;
+    }
+
+    const existing = await new sql.Request(tx).query('SELECT ItemId, Name FROM PharmacyItem WHERE IsActive = 1');
+    const idByName = new Map(existing.recordset.map((i) => [i.Name.trim().toLowerCase(), i.ItemId]));
+    const activeIds = new Set(existing.recordset.map((i) => i.ItemId));
+
+    const plan = [];
+    const seenNames = new Map();
+    const seenIds = new Set();
+    for (const r of rows) {
+      const name = text(r.name);
+      const fail = (error) => errors.push({ row: r.row, name, error });
+      if (!name) { fail('Item Name is required'); continue; }
+      if (name.length > 200) { fail('Item Name must be at most 200 characters'); continue; }
+      const key = name.toLowerCase();
+      if (seenNames.has(key)) { fail(`Same Item Name as row ${seenNames.get(key)}`); continue; }
+      seenNames.set(key, r.row);
+
+      let itemId = null;
+      const code = text(r.itemCode);
+      if (code) {
+        const m = /^ITM0*(\d+)$/i.exec(code);
+        itemId = m ? Number(m[1]) : null;
+        if (!itemId || !activeIds.has(itemId)) { fail(`Item Code ${code} isn't an existing item — leave it blank to add a new item`); continue; }
+        const other = idByName.get(key);
+        if (other && other !== itemId) { fail(`Another item is already called "${name}"`); continue; }
+      } else {
+        itemId = idByName.get(key) ?? null;
+      }
+      if (itemId && seenIds.has(itemId)) { fail('This item is already in the file on another row'); continue; }
+      if (itemId) seenIds.add(itemId);
+
+      const v = { name };
+      for (const field of Object.keys(LISTS)) {
+        const n = text(r[field]);
+        v[field] = n ? lists[field].get(n.toLowerCase()) || null : null;
+      }
+      let bad = null;
+      for (const [k, label, max] of [['hsnCode', 'HSN Code', 30], ['pack', 'Pack', 50], ['rack', 'Rack', 50], ['boxNo', 'Box', 50]]) {
+        v[k] = text(r[k]) || null;
+        if (v[k] && v[k].length > max) bad = `${label} must be at most ${max} characters`;
+      }
+      for (const [k, label] of [['mrp', 'MRP'], ['cgstPercent', 'CGST %'], ['sgstPercent', 'SGST %']]) {
+        if (text(r[k]) !== '' && !isNum(r[k])) bad = bad || `${label} must be a number`;
+      }
+      v.mrp = isNum(r.mrp) ? Number(r.mrp) : null;
+      v.cgst = isNum(r.cgstPercent) ? Number(r.cgstPercent) : 0;
+      v.sgst = isNum(r.sgstPercent) ? Number(r.sgstPercent) : 0;
+      bad = bad || checkPricing(v);
+      const schedule = text(r.schedule) || 'None';
+      v.schedule = { none: 'None', h: 'H', h1: 'H1' }[schedule.toLowerCase()];
+      if (!v.schedule) bad = bad || 'Schedule must be None, H or H1';
+      const status = text(r.status) || 'Active';
+      v.status = { active: 'Active', inactive: 'Inactive' }[status.toLowerCase()];
+      if (!v.status) bad = bad || 'Status must be Active or Inactive';
+      if (bad) { fail(bad); continue; }
+      plan.push({ itemId, v });
+    }
+
+    if (errors.length) {
+      await tx.rollback();
+      return res.status(400).json({ error: `${errors.length} row(s) need fixing — nothing was saved`, errors });
+    }
+
+    let added = 0;
+    let updated = 0;
+    for (const { itemId, v } of plan) {
+      if (itemId) {
+        await bindItem(new sql.Request(tx), v).input('id', sql.Int, itemId).query(`
+          UPDATE PharmacyItem
+          SET Name = @name, UnitId = @unitId, GenericNameId = @genericId, ManufacturerId = @manufacturerId,
+              Category = @category, Potency = @potency, HSNCode = @hsn, Pack = @pack, Rack = @rack, BoxNo = @box,
+              MRP = @mrp, CGSTPercent = @cgst, SGSTPercent = @sgst, GSTPercent = @gst,
+              SellPrice = CASE WHEN @mrp IS NOT NULL AND (SellPrice IS NULL OR SellPrice > @mrp) THEN @mrp ELSE SellPrice END,
+              ScheduleH = @h, ScheduleH1 = @h1, Status = @status, EditedAt = GETDATE()
+          WHERE ItemId = @id`);
+        updated += 1;
+      } else {
+        await bindItem(new sql.Request(tx), v).query(`
+          INSERT INTO PharmacyItem (Name, UnitId, GenericNameId, ManufacturerId, Category, Potency, HSNCode, Pack, Rack, BoxNo,
+                                    MRP, SellPrice, CGSTPercent, SGSTPercent, GSTPercent, ScheduleH, ScheduleH1, Status)
+          VALUES (@name, @unitId, @genericId, @manufacturerId, @category, @potency, @hsn, @pack, @rack, @box,
+                  @mrp, @mrp, @cgst, @sgst, @gst, @h, @h1, @status)`);
+        added += 1;
+      }
+    }
+    await tx.commit();
+    res.json({ added, updated });
+  } catch (err) {
+    try { await tx.rollback(); } catch { /* already rolled back */ }
     res.status(500).json({ error: err.message });
   }
 });
