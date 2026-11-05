@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Receipt, Trash2, Save, X, List, Printer } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
+import { CardField, CardValue, ItemCard, cardBox, cardBad } from '../../components/MobileCard.jsx';
 import SalesBillReceipt from './SalesBillReceipt.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
@@ -280,7 +281,7 @@ export default function SalesBilling() {
 
   return (
     <div>
-      <div className="card no-print">
+      <div className="card no-print max-md:!px-3">
         <form onSubmit={save}>
           <CardHeader
             icon={Receipt}
@@ -316,7 +317,113 @@ export default function SalesBilling() {
             </div>
           </div>
 
-          <div className="mt-3 overflow-x-auto rounded-lg border border-ink-200 shadow-sm">
+          {/* Phones: one card per item (the last, empty one adds the next item) —
+              Batch · Sell by · MRP · Purchase Price, then Sale Price · Quantity · Disc% ·
+              Amount; the bill totals below. */}
+          <div className="mt-3 space-y-2.5 md:hidden">
+            {lines.map((l, r) => {
+              const item = itemById.get(l.itemId);
+              const b = batchOfLine(l);
+              const problem = problemOf(l);
+              const msg = problem && Object.values(problem)[0];
+              const tags = l.itemId ? [item?.Rack && `Rack ${item.Rack}`, item?.BoxNo && `Box ${item.BoxNo}`, b && `Stock ${stockIn(l, b)} ${l.saleUnit === 'unit' ? 'unit(s)' : 'pack(s)'}`].filter(Boolean) : [];
+              return (
+                <ItemCard
+                  key={l.key} no={r + 1} bad={!!msg}
+                  title={(
+                    <div className="flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1">
+                        <SearchPick className="input" placeholder={l.itemId ? 'Search item...' : 'Search item to add...'} options={itemOptions} value={l.itemId} onChange={(v) => pickItem(l.key, v)} />
+                      </div>
+                      {l.itemId && <button type="button" className="rounded-lg p-1.5 text-red-500 hover:bg-red-50" title="Delete item" onClick={() => removeLine(l.key)}><Trash2 size={16} /></button>}
+                    </div>
+                  )}
+                  sub={tags.length ? <span className="mt-1 flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded bg-white px-1.5 py-px text-[10px] font-semibold text-brand-700 ring-1 ring-brand-100">{t}</span>)}</span> : null}
+                >
+                  {l.itemId ? (
+                    <>
+                      <div className="grid gap-1.5" style={{ gridTemplateColumns: '1.75fr 1.05fr 0.95fr 0.95fr' }}>
+                        <CardField label="Batch" note={b ? `Exp ${expLabel(b.ExpiryDate)}` : ''}>
+                          <select
+                            className={`${cardBox} !text-left`} disabled={l.loading || !l.batches.length} value={l.batch ?? ''}
+                            onChange={(e) => {
+                              const bt = l.batches.find((x) => x.Batch === e.target.value);
+                              setLine(l.key, { batch: e.target.value, ...(bt?.SelAmount != null ? { packPrice: String(bt.SelAmount), price: priceFor(l, bt.SelAmount, l.saleUnit) } : {}) });
+                            }}
+                          >
+                            {l.loading && <option value="">Loading…</option>}
+                            {!l.loading && !l.batches.length && <option value="">No stock</option>}
+                            {l.batches.map((bt) => <option key={bt.Batch} value={bt.Batch}>{bt.Batch || 'No batch'} ({qtyLabel(bt.AvailableQty)})</option>)}
+                          </select>
+                        </CardField>
+                        <CardField label="Sell by">
+                          <select className={`${cardBox} !text-left`} value={l.saleUnit} onChange={(e) => changeUnit(l, e.target.value)}>
+                            <option value="pack">Pack{sizeOf(l) > 1 ? ` (${sizeOf(l)})` : ''}</option>
+                            <option value="unit" disabled={sizeOf(l) <= 1}>Unit</option>
+                          </select>
+                        </CardField>
+                        <CardField label="MRP"><CardValue>{mrpOf(l) != null ? money(mrpOf(l)) : '-'}</CardValue></CardField>
+                        <CardField label="Pur. Price"><CardValue>{purchaseOf(l) != null ? money(purchaseOf(l)) : '-'}</CardValue></CardField>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <CardField label="Sale Price">
+                          <input type="number" inputMode="decimal" step="0.01" min="0" className={`${cardBox} no-spin font-semibold ${problem?.price ? cardBad : ''}`} value={l.price} onChange={(e) => setLine(l.key, { price: e.target.value })} />
+                        </CardField>
+                        <CardField label="Quantity">
+                          <input type="number" inputMode="decimal" step="1" min="0" placeholder="0" className={`${cardBox} no-spin font-semibold ${problem?.qty ? cardBad : ''}`} value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} />
+                        </CardField>
+                        <CardField label="Disc %">
+                          <input type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="0" className={`${cardBox} no-spin ${problem?.disc ? cardBad : ''}`} value={l.disc} onChange={(e) => setLine(l.key, { disc: e.target.value })} />
+                        </CardField>
+                        <CardField label="Amount">
+                          <CardValue className={problem?.amount ? '!bg-red-50 font-bold text-red-700' : '!bg-brand-50 font-bold text-brand-800'}>{money(amountOf(l))}</CardValue>
+                        </CardField>
+                      </div>
+                      {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{msg}</p>}
+                    </>
+                  ) : (
+                    <p className="px-1 py-0.5 text-[11.5px] text-ink-400">Pick an item above to add it to the bill.</p>
+                  )}
+                </ItemCard>
+              );
+            })}
+            <div className="overflow-hidden rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-ink-600">Sub Total <span className="text-xs text-ink-400">· {filled.length} item(s)</span></span>
+                <span className="font-semibold tabular-nums text-ink-900">{money(subTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-1.5">
+                <label className="inline-flex items-center gap-2 text-ink-600">
+                  Bill Discount %
+                  <input
+                    type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="0"
+                    className={`h-7 w-16 rounded-lg border bg-white px-1.5 text-right text-[13px] tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
+                    value={billDisc} onChange={(e) => setBillDisc(e.target.value)}
+                  />
+                </label>
+                <span className={`tabular-nums ${discountAmount ? 'text-red-600' : 'text-ink-400'}`}>{discountAmount ? `− ${money(discountAmount)}` : money(0)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2 font-semibold">
+                <span className="text-ink-700">Total</span>
+                <span className={`tabular-nums ${belowCost ? 'text-red-600' : 'text-ink-900'}`}>{money(total)}</span>
+              </div>
+              {belowCost && !filled.some((l) => problemOf(l)?.amount) && (
+                <p className="bg-red-50 px-3 py-1.5 text-[11.5px] text-red-600">Total is below the purchase cost {money(totalCost)} — lower the Bill Discount</p>
+              )}
+              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2">
+                <label className="inline-flex items-center gap-2 text-ink-600">
+                  <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
+                </label>
+                <span className={`tabular-nums ${roundOff < 0 ? 'text-red-600' : 'text-ink-700'}`}>{roundOff > 0 ? '+ ' : roundOff < 0 ? '− ' : ''}{money(Math.abs(roundOff))}</span>
+              </div>
+              <div className="flex items-center justify-between bg-brand-600 px-3 py-2.5 text-white">
+                <span className="font-semibold">Net Amount</span>
+                <span className="text-lg font-bold tabular-nums">₹{money(netAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 hidden overflow-x-auto rounded-lg border border-ink-200 shadow-sm md:block">
             {/* Fixed column shares (adding up to 100%) so every heading stays on one line. */}
             <table className="w-full min-w-[1100px] table-fixed border-collapse text-left text-[13px]" {...gridKeys}>
               <thead>
@@ -474,8 +581,8 @@ export default function SalesBilling() {
             </table>
           </div>
 
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <p className="mr-auto text-[12px] text-ink-400">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+            <p className="mr-auto hidden text-[12px] text-ink-400 md:block">
               <kbd className="rounded border border-ink-200 bg-ink-50 px-1">Enter</kbd> moves Item → Batch → Sell by → Quantity → Disc% → next item. ↑ ↓ change the Batch / Sell by; ← → reach Sale Price.
             </p>
             <button type="button" className="btn-secondary" onClick={() => (editingId ? navigate('/pharmacy/sales-billing-list') : resetForm())}>
@@ -484,7 +591,7 @@ export default function SalesBilling() {
             <button type="button" className="btn-secondary" disabled={saving || hasProblem} title="Save the bill and print it" onClick={(e) => save(e, true)}>
               <Printer size={16} /> {editingId ? 'Update & Print' : 'Save & Print'}
             </button>
-            <button type="submit" className="btn-primary" disabled={saving || hasProblem}>
+            <button type="submit" className="btn-primary max-sm:col-span-2" disabled={saving || hasProblem}>
               <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update' : 'Save'}
             </button>
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { PackagePlus, Save, X, List, ChevronRight, ChevronLeft, Lock } from 'lucide-react';
+import { PackagePlus, Save, X, List, ChevronRight, ChevronLeft, ChevronDown, Lock } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
@@ -130,6 +130,11 @@ export default function StockIn() {
     : W0;
   const w = (key) => ({ width: `${W[key]}%` });
   const [fill, setFill] = useState(emptyFill);
+  // Phones: rows whose details are opened with their arrow (by PoLineId).
+  const [openRows, setOpenRows] = useState(() => new Set());
+  const toggleRow = (id) => setOpenRows((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allOpen = rows.length > 0 && rows.every((r) => openRows.has(r.PoLineId));
+  const toggleAll = () => setOpenRows(allOpen ? new Set() : new Set(rows.map((r) => r.PoLineId)));
   const [editing, setEditing] = useState(null); // { id, no, locked }
   const [saving, setSaving] = useState(false);
 
@@ -256,7 +261,7 @@ export default function StockIn() {
 
   return (
     <div>
-      <div className="card">
+      <div className="card max-md:!px-3">
         <form onSubmit={save}>
           <CardHeader
             icon={PackagePlus}
@@ -271,7 +276,7 @@ export default function StockIn() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap">
             <div className="w-full sm:w-72">
               <label className="label">Vendor Name *</label>
               <SearchPick className="input" placeholder="Search vendor..." options={vendorOptions} value={vendorId} onChange={pickVendor} disabled={!!editing} />
@@ -283,7 +288,7 @@ export default function StockIn() {
                 {orders.map((o) => <option key={o.PurchaseOrderId} value={o.PurchaseOrderId}>{`${o.OrderNo} · ${dateLabel(o.OrderDate)} · ₹${money(o.TotalAmount)}`}</option>)}
               </select>
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <label className="label">Date *</label>
               <input type="date" className="input" value={inDate} onChange={(e) => setInDate(e.target.value)} />
             </div>
@@ -300,7 +305,103 @@ export default function StockIn() {
             </div>
           )}
 
-          <div className="mt-2 overflow-x-auto">
+          {/* Phones: one card per item — MRP · P.Rate · Order · Free · Batch, then
+              Mf.Date · Exp.Date · S.Disc% · Sel.Amount; "More details" opens the rest. */}
+          <div className="mt-3 space-y-2.5 md:hidden">
+            {rows.length === 0 && (
+              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{orderId ? 'Loading the order…' : 'Pick a vendor and a purchase order to list its items.'}</p>
+            )}
+            {rows.length > 0 && (
+              <div className="flex items-center justify-between px-0.5">
+                <span className="text-[12px] font-semibold text-ink-600">{rows.length} item(s) · {receiving.length} receiving</span>
+                <button type="button" className="text-[12px] font-medium text-brand-600" onClick={toggleAll}>{allOpen ? 'Hide all details' : 'Show all details'}</button>
+              </div>
+            )}
+            {rows.map((r, i) => {
+              const p = problems[i] || {};
+              const sel = selAmount({ mrp: r.MRP, discPercent: r.disc });
+              const n = unitsPerPack(r.Pack, r.Unit);
+              const skipped = Number(r.qty || 0) === 0 && Number(r.free || 0) === 0;
+              const msg = Object.values(p)[0];
+              const oc = orderCalc(r);
+              const open = openRows.has(r.PoLineId);
+              const mbox = 'h-[30px] w-full min-w-0 rounded-lg border border-ink-200 bg-white px-1 text-center text-[12px] tabular-nums shadow-sm placeholder:text-[10px] placeholder:text-ink-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100';
+              // Every field: a heading, a box (typed or shown) and a note line, each the
+              // same height, so the boxes line up across the row.
+              const field = (label, boxEl, note = '') => (
+                <label className="block min-w-0">
+                  <span className="block h-4 truncate text-center text-[10px] font-semibold leading-4 text-ink-500">{label}</span>
+                  {boxEl}
+                  <span className="block h-3.5 truncate text-center text-[9px] leading-[14px] text-ink-400">{note}</span>
+                </label>
+              );
+              const shown = (value, cls = '') => <div className={`flex h-[30px] items-center justify-center truncate rounded-lg bg-ink-50 px-1 text-[12px] tabular-nums text-ink-700 ${cls}`}>{value}</div>;
+              const d = (label, value, cls = '') => (
+                <div className="min-w-0">
+                  <p className="truncate text-[9.5px] font-semibold text-ink-400">{label}</p>
+                  <p className={`truncate text-[12px] tabular-nums text-ink-700 ${cls}`}>{value}</p>
+                </div>
+              );
+              return (
+                <div key={r.PoLineId} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${msg ? 'border-red-300' : skipped ? 'border-ink-200 opacity-75' : 'border-ink-200'}`}>
+                  <div className="flex items-start gap-2 border-b border-ink-100 bg-brand-50/60 px-2.5 py-2">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold leading-snug text-ink-800">{r.ItemName}</p>
+                      <p className="text-[10.5px] text-ink-500">
+                        {[r.Pack, r.Unit && `Unit ${r.Unit}`].filter(Boolean).join(' · ')}{r.Pack || r.Unit ? ' · ' : ''}Ordered {r.Ordered}{Number(r.FreeOrdered) ? ` + ${r.FreeOrdered} free` : ''}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${skipped ? 'bg-ink-100 text-ink-500' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {skipped ? 'Skipped' : `Receiving ${receivedOf(r)}`}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 p-2">
+                    <div className="grid gap-1.5" style={{ gridTemplateColumns: '1fr 1fr 0.65fr 0.65fr 1.6fr' }}>
+                      {field('MRP', shown(money(r.MRP)))}
+                      {field('P.Rate', shown(money(r.PRate)), Number(r.DiscPercent) ? `less ${Number(r.DiscPercent)}%` : '')}
+                      {field('Order', <input type="number" inputMode="decimal" min="0" step="any" className={`${mbox} no-spin font-semibold ${p.qty ? bad : ''}`} value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} />, `due ${r.Due}`)}
+                      {field('Free', <input type="number" inputMode="decimal" min="0" step="any" className={`${mbox} no-spin ${p.free ? bad : ''}`} value={r.free} onChange={(e) => setRow(i, { free: e.target.value })} />, `due ${r.FreeDue}`)}
+                      {field('Batch', <input className={`${mbox} ${p.batchNo ? bad : ''}`} placeholder="Batch" value={r.batchNo} onChange={(e) => setRow(i, { batchNo: e.target.value })} />)}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {field('Mf.Date', <MonthBox className={`${mbox} ${p.mfg ? bad : ''}`} value={r.mfg} onChange={(v) => setRow(i, { mfg: v })} />)}
+                      {field('Exp.Date', <MonthBox className={`${mbox} ${p.exp ? bad : ''}`} value={r.exp} onChange={(v) => setRow(i, { exp: v })} />)}
+                      {field('S.Disc %', <input type="number" inputMode="decimal" min="0" max="100" step="0.01" className={`${mbox} no-spin ${p.disc ? bad : ''}`} value={r.disc} onChange={(e) => setRow(i, { disc: e.target.value })} />)}
+                      {field('Sel.Amount', shown(money(sel), '!bg-brand-50 font-bold text-brand-800'), `${money(round2(sel / n))} / unit`)}
+                    </div>
+                    {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{msg}</p>}
+                    <button type="button" className="flex w-full items-center justify-between rounded-lg bg-ink-50 px-2.5 py-1.5 text-[11.5px] font-medium text-ink-600" onClick={() => toggleRow(r.PoLineId)}>
+                      <span className="flex items-center gap-1">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {open ? 'Hide details' : 'More details'}</span>
+                      <span className="tabular-nums">Total <b className="text-ink-800">₹{money(oc.total)}</b></span>
+                    </button>
+                    {open && (
+                      <div className="grid grid-cols-4 gap-x-2 gap-y-1.5 rounded-lg border border-ink-100 px-2.5 py-2">
+                        {d('Amount', money(oc.amount))}
+                        {d('GST %', `${oc.gstPercent} (${Number(r.CGSTPercent || 0)}+${Number(r.SGSTPercent || 0)})`)}
+                        {d('GST Amt', money(oc.gstAmount))}
+                        {d('Total', money(oc.total), 'font-bold text-brand-800')}
+                        {d('Disc %', Number(r.DiscPercent || 0))}
+                        {d('Received earlier', `${r.Received}${Number(r.FreeReceived) ? ` + ${r.FreeReceived} free` : ''}`)}
+                        {d('Unit Price', `${money(round2(sel / n))} ÷${n}`, 'text-emerald-700')}
+                        <label className="flex items-end gap-1.5 pb-0.5 text-[11px] text-ink-600" title="Tick items, then fill Batch / dates / discount for all of them at once">
+                          <input type="checkbox" checked={r.ticked} onChange={() => setRow(i, { ticked: !r.ticked })} /> Bulk fill
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {rows.length > 0 && (
+              <div className="flex items-center justify-between rounded-xl bg-brand-600 px-3 py-2.5 text-white shadow-sm">
+                <span className="text-sm font-semibold">Sum of Total</span>
+                <span className="text-lg font-bold tabular-nums">₹{money(orderTotal)}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 hidden overflow-x-auto md:block">
             {/* Fixed layout: each column has a share of the width, so either view fits the screen. */}
             {/* Too many columns to squeeze below ~1280px: from there down it scrolls sideways. */}
             <table className="w-full table-fixed border-collapse text-left text-[12px]" style={{ minWidth: 1170 }} {...gridKeys}>
@@ -432,10 +533,11 @@ export default function StockIn() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-ink-500">
+            <p className="hidden text-xs text-ink-500 md:block">
               Received = R.Order + R.Free and starts at what's still due; typing it splits into R.Order first, then R.Free. Both go into stock, only R.Order is charged. Rows with nothing received are skipped. Sel.Amount = MRP less S.Disc% (selling discount); Sel.Amount › shows the Unit Price, Sel.Amount ÷ the units in the pack.
             </p>
-            <div className="flex gap-2">
+            <p className="text-[11px] text-ink-500 md:hidden">Order + Free = what is received now (only Order is charged). Sel.Amount = MRP less S.Disc%.</p>
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
               <button type="button" className="btn-secondary" onClick={() => (editing ? navigate('/pharmacy/stock-in-list') : reset())}><X size={16} /> Cancel</button>
               <button type="submit" className="btn-primary" disabled={saving || !!locked}><Save size={16} /> {saving ? 'Saving...' : editing ? 'Update' : 'Save'}</button>
             </div>

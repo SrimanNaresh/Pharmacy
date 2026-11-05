@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { RotateCcw, Save, X, List } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
+import { CardField, CardValue, ItemCard, cardBox, cardBad } from '../../components/MobileCard.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -151,7 +152,7 @@ export default function SalesReturnMaster() {
 
   return (
     <div>
-      <div className="card">
+      <div className="card max-md:!px-3">
         <form onSubmit={save}>
           <CardHeader
             icon={RotateCcw}
@@ -206,7 +207,66 @@ export default function SalesReturnMaster() {
             </p>
           )}
 
-          <div className="mt-3 overflow-x-auto">
+          {/* Phones: one card per sale line — Batch · Exp.Date · Unit · Sale Price · Disc %,
+              then Sold · Returned · Return Qty · Amount; the refund totals below. */}
+          <div className="mt-3 space-y-2.5 md:hidden">
+            {rows.length === 0 && (
+              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{saleId ? 'Loading…' : 'Pick a sale to list its items.'}</p>
+            )}
+            {rows.map((r, i) => {
+              const none = r.Left <= 0 && !Number(r.qty);
+              const p = problems[i];
+              const returningQty = Number(r.qty) > 0;
+              return (
+                <ItemCard
+                  key={r.SalesLineId} no={i + 1} title={r.ItemName} sub={`Sold ${r.Sold} ${r.SaleUnit === 'unit' ? 'unit(s)' : 'pack(s)'} · ${r.Left} left to return`}
+                  tag={none ? 'Nothing left' : returningQty ? `Returning ${Number(r.qty)}` : 'Not returned'}
+                  tagClass={returningQty ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-100 text-ink-500'} bad={!!p} dim={none}
+                >
+                  <div className="grid gap-1.5" style={{ gridTemplateColumns: '1.5fr 0.95fr 0.8fr 1fr 0.75fr' }}>
+                    <CardField label="Batch No"><CardValue>{r.Batch || '-'}</CardValue></CardField>
+                    <CardField label="Exp.Date"><CardValue>{r.ExpiryDate ? `${String(r.ExpiryDate).slice(5, 7)}/${String(r.ExpiryDate).slice(2, 4)}` : '-'}</CardValue></CardField>
+                    <CardField label="Unit"><CardValue>{r.SaleUnit === 'unit' ? 'Unit' : 'Pack'}</CardValue></CardField>
+                    <CardField label="Sale Price"><CardValue>{money(r.Rate)}</CardValue></CardField>
+                    <CardField label="Disc %"><CardValue>{r.DiscPercent ? Number(r.DiscPercent) : '0'}</CardValue></CardField>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <CardField label="Sold"><CardValue>{r.Sold}</CardValue></CardField>
+                    <CardField label="Returned" note="earlier"><CardValue>{r.Returned}</CardValue></CardField>
+                    <CardField label="Return Qty" note={none ? '' : `max ${r.Left}`}>
+                      <input
+                        type="number" inputMode="decimal" min="0" max={r.Left} step="any" disabled={none}
+                        className={`${cardBox} no-spin font-semibold ${p ? cardBad : ''}`} value={r.qty} placeholder={none ? '' : '0'}
+                        onChange={(e) => setQty(i, e.target.value)}
+                      />
+                    </CardField>
+                    <CardField label="Amount"><CardValue className="!bg-brand-50 font-bold text-brand-800">{returningQty ? money(amountOf(r)) : '0.00'}</CardValue></CardField>
+                  </div>
+                  {p && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{p}</p>}
+                </ItemCard>
+              );
+            })}
+            {rows.length > 0 && (
+              <div className="overflow-hidden rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-ink-600">Sub Total</span>
+                  <span className="font-semibold tabular-nums text-ink-900">{money(bill.subTotal)}</span>
+                </div>
+                {Number(sale?.DiscPercent) > 0 && (
+                  <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2">
+                    <span className="text-ink-600">Bill Discount {Number(sale.DiscPercent)}%</span>
+                    <span className="tabular-nums text-red-600">-{money(bill.discountAmount)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between bg-brand-600 px-3 py-2.5 text-white">
+                  <span className="font-semibold">Refund Amount</span>
+                  <span className="text-lg font-bold tabular-nums">₹{money(bill.total)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 hidden overflow-x-auto md:block">
             <table className="w-full min-w-[900px] border-collapse text-left text-[13px]" {...gridKeys}>
               <thead>
                 <tr className="bg-brand-50 font-bold text-brand-700">
@@ -270,7 +330,7 @@ export default function SalesReturnMaster() {
             </table>
           </div>
 
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button type="button" className="btn-secondary" onClick={() => (editing ? navigate('/pharmacy/sales-return-list') : reset())}><X size={16} /> Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving}><Save size={16} /> {saving ? 'Saving...' : editing ? 'Update' : 'Save'}</button>
           </div>
