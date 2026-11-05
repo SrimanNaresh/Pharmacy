@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Menu, LogOut, ChevronDown } from 'lucide-react';
-import TopNav from './components/TopNav.jsx';
+import TopNav, { SideNav } from './components/TopNav.jsx';
 import { clinicApi } from './api/client.js';
 import { useAuth } from './context/AuthContext.jsx';
 import { useAppName } from './hooks/useAppName.js';
 import Login from './pages/Login.jsx';
 
 import DashboardRedirect from './pages/DashboardRedirect.jsx';
+import Dashboard from './pages/Dashboard.jsx';
 import UserMaster from './pages/master/UserMaster.jsx';
 import MenuAccess from './pages/master/MenuAccess.jsx';
 import PharmacyDetails from './pages/master/PharmacyDetails.jsx';
@@ -74,8 +75,21 @@ function UserMenu() {
 }
 
 function AppLayout({ appName }) {
-  // Open by default — the hamburger toggles the nav bar (desktop) / dropdown (mobile) shut.
+  // Open by default. On desktop the menu button moves the menu between the
+  // top bar and a left-side column (remembered in this browser); on a phone it
+  // opens / closes the dropdown menu.
   const [navOpen, setNavOpen] = useState(true);
+  const [navSide, setNavSide] = useState(() => {
+    try { return localStorage.getItem('nav-side') === '1'; } catch { return false; }
+  });
+  const toggleMenu = () => {
+    if (!window.matchMedia('(min-width: 1024px)').matches) return setNavOpen((o) => !o);
+    setNavOpen(true);
+    setNavSide((v) => {
+      try { localStorage.setItem('nav-side', v ? '0' : '1'); } catch { /* not stored */ }
+      return !v;
+    });
+  };
   const [clinicName, setClinicName] = useState('');
 
   useEffect(() => { clinicApi.get().then((c) => setClinicName(c?.Name || '')).catch(() => setClinicName('')); }, []);
@@ -85,10 +99,10 @@ function AppLayout({ appName }) {
       <div className="no-print sticky top-0 z-20">
         <header className="relative z-10 flex items-center gap-3 border-b border-ink-100 bg-white/85 px-4 py-0.5 backdrop-blur-md lg:px-6">
           <button
-            onClick={() => setNavOpen((o) => !o)}
-            className="rounded-lg p-1 text-ink-600 transition-colors hover:bg-ink-100"
+            onClick={toggleMenu}
+            className={`rounded-lg p-1 transition-colors hover:bg-ink-100 ${navSide ? 'bg-ink-100 text-brand-700' : 'text-ink-600'}`}
             aria-label="Toggle menu"
-            title="Show / hide menu"
+            title={navSide ? 'Move menu to the top' : 'Move menu to the left'}
           >
             <Menu size={18} />
           </button>
@@ -104,40 +118,44 @@ function AppLayout({ appName }) {
           </div>
         </header>
 
-        <TopNav open={navOpen} onClose={() => setNavOpen(false)} />
+        <TopNav open={navOpen} onClose={() => setNavOpen(false)} side={navSide} />
       </div>
 
-      <main className="no-scrollbar flex-1 overflow-y-auto px-4 pb-4 pt-2 lg:px-6 lg:pb-6 lg:pt-2">
-        <div className="w-full animate-fade-in">
-          <Routes>
-              <Route path="/" element={<DashboardRedirect />} />
-              <Route path="/settings/pharmacy-details" element={<PharmacyDetails />} />
-              <Route path="/settings/user" element={<UserMaster />} />
-              <Route path="/settings/menu-access" element={<MenuAccess />} />
-              <Route path="/pharmacy/item" element={<ItemMaster />} />
-              <Route path="/pharmacy/item-list" element={<ItemListPage />} />
-              <Route path="/pharmacy/item-bulk-update" element={<ItemBulkUpdate />} />
-              <Route path="/pharmacy/purchase-order" element={<PurchaseOrder />} />
-              <Route path="/pharmacy/purchase-order-list" element={<PurchaseOrderList />} />
-              <Route path="/pharmacy/stock-in" element={<StockIn />} />
-              <Route path="/pharmacy/stock-in-list" element={<StockInList />} />
-              <Route path="/pharmacy/stock-adjustment" element={<StockAdjustment />} />
-              <Route path="/pharmacy/stock-adjustment-list" element={<StockAdjustmentList />} />
-              <Route path="/pharmacy/return" element={<StockReturnMaster />} />
-              <Route path="/pharmacy/return-list" element={<StockReturnList />} />
-              <Route path="/pharmacy/sales-return" element={<SalesReturnMaster />} />
-              <Route path="/pharmacy/sales-return-list" element={<SalesReturnList />} />
-              <Route path="/pharmacy/vendor-master" element={<VendorMaster />} />
-              <Route path="/pharmacy/vendor-list" element={<VendorList />} />
-              <Route path="/pharmacy/vendor-payment" element={<VendorPaymentEntry />} />
-              <Route path="/pharmacy/sales-billing" element={<SalesBilling />} />
-              <Route path="/pharmacy/sales-billing-list" element={<SalesBillingList />} />
-              <Route path="/pharmacy/stock-report" element={<StockReport />} />
-              <Route path="/pharmacy/vendor-payments" element={<VendorPayments />} />
-              <Route path="/pharmacy/all-in-one-report" element={<AllInOneReport />} />
-            </Routes>
+      <div className="flex min-h-0 flex-1">
+        {navSide && <SideNav />}
+        <main className="no-scrollbar min-w-0 flex-1 overflow-y-auto px-4 pb-4 pt-2 lg:px-6 lg:pb-6 lg:pt-2">
+          <div className="w-full animate-fade-in">
+            <Routes>
+                <Route path="/" element={<DashboardRedirect />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/settings/pharmacy-details" element={<PharmacyDetails />} />
+                <Route path="/settings/user" element={<UserMaster />} />
+                <Route path="/settings/menu-access" element={<MenuAccess />} />
+                <Route path="/pharmacy/item" element={<ItemMaster />} />
+                <Route path="/pharmacy/item-list" element={<ItemListPage />} />
+                <Route path="/pharmacy/item-bulk-update" element={<ItemBulkUpdate />} />
+                <Route path="/pharmacy/purchase-order" element={<PurchaseOrder />} />
+                <Route path="/pharmacy/purchase-order-list" element={<PurchaseOrderList />} />
+                <Route path="/pharmacy/stock-in" element={<StockIn />} />
+                <Route path="/pharmacy/stock-in-list" element={<StockInList />} />
+                <Route path="/pharmacy/stock-adjustment" element={<StockAdjustment />} />
+                <Route path="/pharmacy/stock-adjustment-list" element={<StockAdjustmentList />} />
+                <Route path="/pharmacy/return" element={<StockReturnMaster />} />
+                <Route path="/pharmacy/return-list" element={<StockReturnList />} />
+                <Route path="/pharmacy/sales-return" element={<SalesReturnMaster />} />
+                <Route path="/pharmacy/sales-return-list" element={<SalesReturnList />} />
+                <Route path="/pharmacy/vendor-master" element={<VendorMaster />} />
+                <Route path="/pharmacy/vendor-list" element={<VendorList />} />
+                <Route path="/pharmacy/vendor-payment" element={<VendorPaymentEntry />} />
+                <Route path="/pharmacy/sales-billing" element={<SalesBilling />} />
+                <Route path="/pharmacy/sales-billing-list" element={<SalesBillingList />} />
+                <Route path="/pharmacy/stock-report" element={<StockReport />} />
+                <Route path="/pharmacy/vendor-payments" element={<VendorPayments />} />
+                <Route path="/pharmacy/all-in-one-report" element={<AllInOneReport />} />
+              </Routes>
           </div>
         </main>
+      </div>
     </div>
   );
 }

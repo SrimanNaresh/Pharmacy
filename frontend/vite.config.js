@@ -23,8 +23,9 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // API_TARGET lets the API run on another port locally (e.g. when 5000 is taken).
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': process.env.API_TARGET || 'http://localhost:5000',
     },
   },
 });

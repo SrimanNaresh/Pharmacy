@@ -163,4 +163,8 @@ export const salesBillingApi = {
   batches: (itemId, excludeSaleId) => api.get(`/sales-billings/batches/${itemId}`, { params: { excludeSaleId } }).then((r) => r.data),
 };
 
+export const dashboardApi = {
+  get: () => api.get('/dashboard').then((r) => r.data),
+};
+
 export default api;

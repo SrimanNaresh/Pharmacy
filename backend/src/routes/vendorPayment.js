@@ -16,7 +16,7 @@ const text = (v) => (v == null ? '' : String(v).trim());
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // One row per active Stock In with its Total, Returns, Paid and Balance.
-const INVOICES = `
+export const INVOICES = `
   SELECT h.StockInId, ${SI_NO} AS InvoiceNo, h.InDate, h.VendorId, v.VendorName, h.PurchaseOrderId,
          ${docNoSql('PO', 'h.PurchaseOrderId')} AS OrderNo,
          ISNULL((SELECT SUM(a + ROUND(a * g / 100, 2)) FROM (
@@ -35,7 +35,7 @@ const INVOICES = `
   FROM StockIn h JOIN Vendor v ON v.VendorId = h.VendorId
   WHERE h.IsActive = 1
 `;
-const withBalance = (r) => {
+export const withBalance = (r) => {
   const net = round2(Number(r.Total) - Number(r.Returns));
   return { ...r, NetPayable: net, Balance: round2(net - Number(r.Paid)) };
 };

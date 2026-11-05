@@ -16,6 +16,13 @@ const GROUP_ICONS = {
   Settings: Settings,
   Reports: FileText,
   Pharmacy: Package,
+  Item: Package,
+  Vendor: Store,
+  'Purchase / Order': ShoppingCart,
+  'Stock In': PackagePlus,
+  Return: Undo2,
+  Sales: Receipt,
+  Report: BarChart3,
   Clinic: Building2,
 };
 
@@ -65,6 +72,20 @@ const INDENT_LEAF = ['mx-1', 'ml-3 mr-1', 'ml-5 mr-1'];
 function DesktopGroupButton({ item, pathname, isOpen, onToggle }) {
   const Icon = item.icon;
   const activeInGroup = item.children.some((c) => nodeIsActive(c, pathname));
+
+  if (item.direct) {
+    return (
+      <NavLink
+        to={item.direct}
+        className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
+          activeInGroup ? 'bg-white/15 text-white' : 'text-white/75 hover:bg-white/10 hover:text-white'
+        }`}
+      >
+        <Icon size={16} className={activeInGroup ? 'text-teal-300' : 'text-white/50'} />
+        {item.label}
+      </NavLink>
+    );
+  }
 
   return (
     <button
@@ -392,6 +413,21 @@ function MobileGroupItem({ item, pathname, onNavigate }) {
   const activeInGroup = item.children.some((c) => nodeIsActive(c, pathname));
   const [open, setOpen] = useState(activeInGroup);
 
+  if (item.direct) {
+    return (
+      <NavLink
+        to={item.direct}
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+          activeInGroup ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
+        }`}
+      >
+        <Icon size={18} className={activeInGroup ? 'text-teal-300' : 'text-white/50'} />
+        {item.label}
+      </NavLink>
+    );
+  }
+
   return (
     <div>
       <button
@@ -430,16 +466,13 @@ function filterNode(node, allowed) {
 // `open` controls visibility on both breakpoints: the horizontal bar on
 // desktop, and the dropdown accordion panel on mobile — one hamburger
 // toggle in the header drives both via this single prop.
-export default function TopNav({ open, onClose }) {
-  const { pathname } = useLocation();
+// The signed-in user's menu: MENU_GROUPS less what their Menu Access hides.
+// A user who has never been configured in Menu Access sees everything, as before.
+// Once an admin has saved any access for them, only items granted Full/View show —
+// anything not explicitly granted (including menus added after their last save) is hidden.
+function useMenu() {
   const { user } = useAuth();
   const [access, setAccess] = useState(null); // null = not loaded yet; Map of menuKey -> AccessLevel
-  const [openGroup, setOpenGroup] = useState(null);
-  const [openRect, setOpenRect] = useState(null);
-  const wrapRef = useRef(null);
-  const panelRef = useRef(null);
-  const navRowRef = useRef(null);
-  const openBtnRef = useRef(null);
 
   useEffect(() => {
     if (!user?.userId) return;
@@ -447,6 +480,116 @@ export default function TopNav({ open, onClose }) {
       .then((rows) => setAccess(new Map(rows.map((r) => [r.MenuKey, r.AccessLevel]))))
       .catch(() => setAccess(new Map()));
   }, [user?.userId]);
+
+  return useMemo(() => {
+    const configured = access && access.size > 0;
+    const allowed = (key) => !configured || ['Full', 'View'].includes(access.get(key));
+    return MENU_GROUPS.map((g) => {
+      const children = g.items.map((it) => filterNode(it, allowed)).filter(Boolean);
+      const only = children.length === 1 && !children[0].submenu && children[0].label === g.group ? children[0] : null;
+      return { type: 'group', label: g.group, icon: GROUP_ICONS[g.group] || ClipboardList, children, direct: only?.to || null };
+    }).filter((g) => g.children.length > 0);
+  }, [access]);
+}
+
+// Every page under the given nodes as { trail, label, to }, for the sidebar
+// search (trail = the submenu labels above it).
+function leavesOf(nodes, trail = []) {
+  return nodes.flatMap((c) => (c.submenu
+    ? leavesOf(c.submenu, [...trail, c.label])
+    : [{ trail, label: c.label, to: c.to }]));
+}
+
+// Desktop left-side menu (the header's menu button moves the menu here and
+// back): the same groups as the top bar, as an accordion in a fixed column.
+// The search box on top lists the matching pages instead ("Stock In ›
+// Adjustment"); ↑ / ↓ pick one, Enter opens it, Esc clears the search.
+export function SideNav() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const menu = useMenu();
+  const [query, setQuery] = useState('');
+  const [pick, setPick] = useState(0);
+  const q = query.trim().toLowerCase();
+
+  const results = useMemo(() => {
+    if (!q) return [];
+    return menu.flatMap((item) => leavesOf(item.children).map((p) => ({ ...p, group: item.label, icon: item.icon })))
+      .map((p) => ({ ...p, title: p.label === p.group ? p.label : `${p.group} › ${[...p.trail, p.label].join(' › ')}` }))
+      .filter((p) => p.title.toLowerCase().includes(q));
+  }, [menu, q]);
+  useEffect(() => { setPick(0); }, [q]);
+
+  const open = (to) => { setQuery(''); navigate(to); };
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setPick((i) => Math.min(i + 1, results.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setPick((i) => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter' && results[pick]) { e.preventDefault(); open(results[pick].to); }
+    else if (e.key === 'Escape') { setQuery(''); e.currentTarget.blur(); }
+  };
+
+  return (
+    <aside className="no-print no-scrollbar hidden w-56 shrink-0 overflow-y-auto bg-sidebar-gradient shadow-sm animate-slide-in lg:block">
+      <div className="sticky top-0 z-10 bg-[#1d306e] px-2 pb-1 pt-2">
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Search menu..."
+            aria-label="Search menu"
+            className="w-full rounded-lg border border-white/15 bg-white/10 py-1.5 pl-8 pr-7 text-[13px] text-white placeholder-white/40 outline-none transition-colors focus:border-teal-300/60 focus:bg-white/15"
+          />
+          {query && (
+            <button onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-white/50 hover:text-white">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+      {q ? (
+        <nav className="space-y-0.5 px-2 py-1">
+          {results.length === 0 && <p className="px-3 py-2 text-[13px] text-white/50">No matching pages.</p>}
+          {results.map((r, i) => {
+            const Icon = r.icon;
+            const current = pathname === r.to;
+            return (
+              <button
+                key={r.to}
+                onClick={() => open(r.to)}
+                onMouseEnter={() => setPick(i)}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
+                  i === pick ? 'bg-white/15 text-white' : 'text-white/70 hover:text-white'
+                } ${current ? 'font-semibold' : ''}`}
+              >
+                <Icon size={15} className="shrink-0 text-white/50" />
+                <span className="min-w-0"><Highlight text={r.title} query={q} /></span>
+              </button>
+            );
+          })}
+        </nav>
+      ) : (
+        <nav className="space-y-0.5 px-2 py-1">
+          {menu.map((item) => (
+            <MobileGroupItem key={item.label} item={item} pathname={pathname} onNavigate={() => {}} />
+          ))}
+        </nav>
+      )}
+    </aside>
+  );
+}
+
+// `side`: the menu sits in SideNav on desktop, so the top bar is left out
+// there (the mobile dropdown still works as before).
+export default function TopNav({ open, onClose, side = false }) {
+  const { pathname } = useLocation();
+  const [openGroup, setOpenGroup] = useState(null);
+  const [openRect, setOpenRect] = useState(null);
+  const wrapRef = useRef(null);
+  const panelRef = useRef(null);
+  const navRowRef = useRef(null);
+  const openBtnRef = useRef(null);
 
   // Close the open dropdown on an outside click (checking both the bar — for
   // its buttons — and the portaled panel, which lives outside the bar's DOM
@@ -482,21 +625,7 @@ export default function TopNav({ open, onClose }) {
     setOpenGroup(label);
   }
 
-  // A user who has never been configured in Menu Access sees everything, as before.
-  // Once an admin has saved any access for them, only items granted Full/View show —
-  // anything not explicitly granted (including menus added after their last save) is hidden.
-  const menu = useMemo(() => {
-    const configured = access && access.size > 0;
-    const allowed = (key) => !configured || ['Full', 'View'].includes(access.get(key));
-    const groups = MENU_GROUPS.map((g) => ({
-      type: 'group',
-      label: g.group,
-      icon: GROUP_ICONS[g.group] || ClipboardList,
-      children: g.items.map((it) => filterNode(it, allowed)).filter(Boolean),
-    })).filter((g) => g.children.length > 0);
-
-    return groups;
-  }, [access]);
+  const menu = useMenu();
 
   // Mobile accordion closes the whole panel on navigate; desktop only closes its dropdown.
   const handleMobileNavigate = () => onClose();
@@ -506,7 +635,7 @@ export default function TopNav({ open, onClose }) {
   return (
     <div ref={wrapRef} className="relative">
       {/* Desktop: horizontal bar */}
-      <nav
+      {!side && <nav
         ref={navRowRef}
         onScroll={closeDropdown}
         className={`no-scrollbar hidden items-center gap-1 overflow-x-auto bg-sidebar-gradient px-4 shadow-sm transition-all duration-200 lg:flex lg:px-6 ${
@@ -522,9 +651,9 @@ export default function TopNav({ open, onClose }) {
             onToggle={(e) => toggleGroup(item.label, e)}
           />
         ))}
-      </nav>
+      </nav>}
 
-      {openItem && openRect && (
+      {!side && openItem && openRect && (
         <DesktopDropdownPanel item={openItem} pathname={pathname} rect={openRect} panelRef={panelRef} onNavigate={handleDesktopNavigate} />
       )}
 

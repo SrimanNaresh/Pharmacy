@@ -20,6 +20,7 @@ import stockReturnRoutes from './routes/stockReturn.js';
 import stockAdjustmentRoutes from './routes/stockAdjustment.js';
 import salesBillingRoutes from './routes/salesBilling.js';
 import salesReturnRoutes from './routes/salesReturn.js';
+import dashboardRoutes from './routes/dashboard.js';
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use('/api/stock-returns', stockReturnRoutes);
 app.use('/api/stock-adjustments', stockAdjustmentRoutes);
 app.use('/api/sales-billings', salesBillingRoutes);
 app.use('/api/sales-returns', salesReturnRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
