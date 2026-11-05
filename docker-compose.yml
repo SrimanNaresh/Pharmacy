@@ -1,0 +1,26 @@
+# Ayush Pharmacy - Docker Compose
+#
+# Server 156.67.104.242: containers bound to 127.0.0.1:<port>, fronted by the
+# HOST nginx, which terminates TLS with the wildcard cert at
+# /etc/letsencrypt/live/thangaminfotech.com/ (see deploy/nginx-site.conf):
+#   /api/ -> 127.0.0.1:5120  (backend)
+#   /     -> 127.0.0.1:3120  (frontend)
+
+services:
+  backend:
+    build: ./backend
+    container_name: ayushpharma-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "127.0.0.1:5120:5000"
+
+  frontend:
+    build: ./frontend
+    container_name: ayushpharma-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:3120:80"

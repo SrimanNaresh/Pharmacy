@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  /* Scale the whole app: all Tailwind rem-based sizes grow proportionally.
+     16px is the browser default; 18px makes the entire UI ~12.5% larger. */
+  html {
+    font-size: 18px;
+  }
+  body {
+    @apply bg-ink-50 text-ink-800 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #a7b0c0 #f5f7fa;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-300;
+  }
+  *::-webkit-scrollbar-track {
+    @apply bg-ink-50;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-400;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-brand-300/60 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 hover:shadow-glow active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-white text-ink-700 shadow-sm hover:border-ink-300 hover:bg-ink-50 active:scale-[0.98];
+  }
+  .btn-danger {
+    @apply btn border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply btn rounded-lg text-ink-500 hover:bg-ink-100 hover:text-ink-700;
+  }
+  /* Compact form boxes: 30px tall. A minimum height (not a fixed one) so
+     textareas still grow; selects and date boxes ignore line height, so the
+     minimum is what lines them up with the text boxes. */
+  .input {
+    @apply min-h-[30px] w-full rounded-lg border border-ink-200 bg-white px-2.5 py-[3px] text-[13px] leading-[22px] text-ink-800 shadow-sm transition-colors placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100/70;
+  }
+  .label {
+    @apply mb-0.5 block text-xs font-medium text-ink-600;
+  }
+  .card {
+    @apply rounded-2xl border border-ink-100 bg-white px-5 pb-5 pt-3 shadow-card transition-shadow sm:px-6 sm:pb-6 sm:pt-3;
+  }
+  .card-hover {
+    @apply hover:border-ink-200 hover:shadow-elevated;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .table-head {
+    @apply border-b border-ink-100 bg-ink-50/60 text-xs font-semibold uppercase tracking-wider text-ink-400;
+  }
+  .table-row {
+    @apply border-b border-ink-50 transition-colors hover:bg-brand-50/40;
+  }
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-ink-400;
+  }
+  /* Scrollable but no visible scrollbar track/thumb — used where the scroll
+     affordance itself (not a visible bar) is enough, e.g. the top nav bar. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@page {
+  margin-top: 0;
+}
+
+@media print {
+  aside, header, .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    break-inside: avoid;
+  }
+  body {
+    background: #fff !important;
+  }
+  /* The page content fades/slides in on mount; force the finished state so a
+     print/PDF snapshot taken mid-animation doesn't render everything washed out. */
+  .animate-fade-in, .animate-slide-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Number boxes in editable grids: no spinner arrows (they hide digits in
+   narrow cells, and ↑ / ↓ move between rows there). */
+.no-spin { -moz-appearance: textfield; appearance: textfield; }
+.no-spin::-webkit-inner-spin-button,
+.no-spin::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Menu drop-downs unfold downward from just under the menu bar. */
+@keyframes menu-down {
+  from { opacity: 0; transform: translateY(-8px) scaleY(0.96); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+.menu-drop { animation: menu-down 0.18s ease-out; transform-origin: top; }
