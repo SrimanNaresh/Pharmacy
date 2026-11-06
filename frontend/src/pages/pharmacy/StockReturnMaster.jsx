@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Undo2, Save, X, List } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import { CardField, CardValue, ItemCard, cardBox, cardBad } from '../../components/MobileCard.jsx';
+import { usePhoneFit, PhoneFooter } from '../../components/PhoneLayout.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -81,6 +82,8 @@ export default function StockReturnMaster() {
     return null;
   };
   const problems = rows.map(problemOf);
+  // Phones: fit the page to the screen so only the batch cards scroll.
+  const { pageRef, areaRef, footerRef, fit } = usePhoneFit([rows.length, editing, stockInId]);
   const returning = rows.filter((r) => Number(r.qty || 0) > 0);
   const total = round2(returning.reduce((t, r) => t + round2(Number(r.qty) * Number(r.Rate)), 0));
 
@@ -116,37 +119,39 @@ export default function StockReturnMaster() {
   const box = 'w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[13px] focus:border-brand-400 focus:bg-white focus:outline-none';
 
   return (
-    <div>
-      <div className="card max-md:!px-3">
-        <form onSubmit={save}>
+    <div ref={pageRef} className={fit.page} style={fit.pageStyle}>
+      <div className={`card max-md:!px-3 ${fit.card}`}>
+        <form onSubmit={save} className={fit.form}>
           <CardHeader
             icon={Undo2}
             title={editing ? `Edit Return · ${editing.no}` : 'Return'}
-            subtitle="Goods sent back to the vendor from one Stock In — reduces stock"
-            actions={<button type="button" className="btn-secondary" onClick={() => navigate('/pharmacy/return-list')}><List size={16} /> View List</button>}
+            subtitle={<span className="hidden md:inline">Goods sent back to the vendor from one Stock In — reduces stock</span>}
+            actions={<button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/return-list')}><List size={16} /> View List</button>}
           />
 
-          <div className="grid grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap">
-            <div className="w-full sm:w-72">
+          <div className="grid grid-cols-[1fr_7rem] items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
+            <div className="min-w-0 sm:w-72">
               <label className="label">Vendor Name *</label>
               <SearchPick className="input" placeholder="Search vendor..." options={vendorOptions} value={vendorId} onChange={pickVendor} disabled={!!editing} />
             </div>
-            <div className="w-full sm:w-80">
+            <div className="col-span-2 row-start-2 min-w-0 sm:w-80">
               <label className="label">Stock In No *</label>
               <select className="input" value={stockInId} disabled={!vendorId || !!editing} onChange={(e) => pickStockIn(e.target.value)}>
                 <option value="">{vendorId ? (stockIns.length ? 'Pick a Stock In' : 'No Stock Ins for this vendor') : 'Pick a vendor first'}</option>
                 {stockIns.map((s) => <option key={s.StockInId} value={s.StockInId}>{`${s.StockInNo} · ${dateLabel(s.InDate)} · ${s.OrderNo}`}</option>)}
               </select>
             </div>
-            <div className="w-full sm:w-auto">
+            <div className="min-w-0 sm:w-auto">
               <label className="label">Date *</label>
-              <input type="date" className="input" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+              <input type="date" className="input max-md:!px-1.5" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
             </div>
           </div>
 
           {/* Phones: one card per batch — Batch · Mf.Date · Exp.Date · Cur.Rate, then
               Received · Returned · Return Qty · Amount. */}
-          <div className="mt-3 space-y-2.5 md:hidden">
+          <div className={`mt-3 flex flex-col gap-2.5 md:hidden ${fit.section}`}>
+            {/* The only part that scrolls on a phone. */}
+            <div ref={areaRef} className={`space-y-2.5 ${fit.area}`}>
             {rows.length === 0 && (
               <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{stockInId ? 'Loading…' : 'Pick a vendor and a Stock In to list its batches.'}</p>
             )}
@@ -182,10 +187,11 @@ export default function StockReturnMaster() {
                 </ItemCard>
               );
             })}
+            </div>
             {rows.length > 0 && (
-              <div className="flex items-center justify-between rounded-xl bg-brand-600 px-3 py-2.5 text-white shadow-sm">
-                <span className="text-sm font-semibold">Sum of Total <span className="text-xs font-normal text-white/80">· {returning.length} returning</span></span>
-                <span className="text-lg font-bold tabular-nums">₹{money(total)}</span>
+              <div className="flex shrink-0 items-center justify-between rounded-xl bg-brand-600 px-3 py-1 text-white shadow-sm">
+                <span className="text-[13px] font-semibold">Sum of Total <span className="text-xs font-normal text-white/80">· {returning.length} returning</span></span>
+                <span className="text-[15px] font-bold tabular-nums">₹{money(total)}</span>
               </div>
             )}
           </div>
@@ -242,12 +248,17 @@ export default function StockReturnMaster() {
             </table>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+          <div className="mt-3 grid shrink-0 grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button type="button" className="btn-secondary" onClick={() => (editing ? navigate('/pharmacy/return-list') : reset())}><X size={16} /> Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving}><Save size={16} /> {saving ? 'Saving...' : editing ? 'Update' : 'Save'}</button>
           </div>
         </form>
       </div>
+      <PhoneFooter footerRef={footerRef}>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/return-list')}>
+          <List size={16} /> View List
+        </button>
+      </PhoneFooter>
       <Toast toast={toast} />
     </div>
   );

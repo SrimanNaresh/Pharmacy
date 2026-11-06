@@ -67,8 +67,8 @@ export default function StockAdjustmentList() {
           }
         />
         {loading ? <Spinner /> : rows.length === 0 ? <EmptyState message="No adjustments found." /> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-lg">
+            <table className="list-pinned pin-first w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="table-head">
                   <th className="rounded-l-lg px-3 py-2">Adj No</th>

@@ -71,27 +71,29 @@ export default function ItemListPage() {
           <EmptyState message="No items found." />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+            {/* Item Name stays fixed on the left; the other columns scroll sideways
+                when they don't fit (always on a phone). */}
+            <div className="overflow-x-auto rounded-lg">
+              <table className="list-pinned pin-first w-full min-w-[720px] text-left text-sm">
                 <thead>
                   <tr className="table-head">
-                    <th className="rounded-l-lg px-3 py-2">Item Code</th>
-                    <th className="px-3 py-2">Item Name</th>
+                    <th className="w-[150px] min-w-[150px] px-3 py-2 sm:w-auto sm:min-w-[220px]">Item Name</th>
+                    <th className="px-3 py-2">Item Code</th>
                     <th className="px-3 py-2">Category</th>
                     <th className="px-3 py-2">Unit</th>
                     <th className="px-3 py-2 text-right">Price</th>
                     <th className="px-3 py-2 text-right">Stock</th>
                     <th className="px-3 py-2">Status</th>
-                    <th className="rounded-r-lg px-3 py-2 text-right">Edit</th>
+                    <th className="px-3 py-2 text-right">Edit</th>
                   </tr>
                 </thead>
                 <tbody>
                   {shown.map((r) => {
                     const low = Number(r.Stock) <= 0;
                     return (
-                      <tr key={r.ItemId} className="table-row">
+                      <tr key={r.ItemId} className="transition-colors hover:bg-brand-50/40">
+                        <td className="max-w-[150px] break-words px-3 py-1.5 font-medium text-slate-700 sm:max-w-none">{r.Name}</td>
                         <td className="px-3 py-1.5 text-slate-500">{r.ItemCode}</td>
-                        <td className="px-3 py-1.5 font-medium text-slate-700">{r.Name}</td>
                         <td className="px-3 py-1.5 text-slate-500">{r.Category || '-'}</td>
                         <td className="px-3 py-1.5 text-slate-500">{r.UnitName || '-'}</td>
                         <td className="px-3 py-1.5 text-right text-slate-600">{money(r.SellPrice ?? r.MRP)}</td>

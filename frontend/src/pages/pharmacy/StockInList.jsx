@@ -123,7 +123,7 @@ export default function StockInList() {
 
   const toggle = (key) => setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
-  const cell = 'border border-ink-200 px-2 py-1';
+  const cell = 'border-b border-r border-ink-200 px-2 py-1';
   const r = 'text-right';
   const totalsCells = (t) => (
     <>
@@ -181,18 +181,19 @@ export default function StockInList() {
               ))}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] border-collapse text-left text-[13px]">
+            {/* The first column (item / Stock In No) stays on the left while the others scroll sideways. */}
+            <div className="overflow-x-auto rounded-lg">
+              <table className="list-pinned w-full min-w-[960px] border-l border-t border-ink-200 text-left text-[13px]">
                 <thead>
                   {tab === 'item' ? (
                     <tr className="bg-brand-50 font-bold text-brand-700">
-                      <th className={cell}>Item / Batch No</th><th className={cell}>Exp</th><th className={cell}>Stock In No</th><th className={cell}>Vendor</th>
+                      <th className={`${cell} pin w-[150px] min-w-[150px] sm:w-auto`}>Item / Batch No</th><th className={cell}>Exp</th><th className={cell}>Stock In No</th><th className={cell}>Vendor</th>
                       <th className={`${cell} ${r}`}>Quantity</th>{AMOUNT_HEADS.map((h) => <th key={h} className={`${cell} ${r}`}>{h}</th>)}
                       {isAdmin && <th className={`${cell} w-24 text-center`}>Edit / Delete</th>}
                     </tr>
                   ) : (
                     <tr className="bg-brand-50 font-bold text-brand-700">
-                      <th className={cell}>Stock In No · Vendor</th><th className={cell}>Item</th><th className={cell}>Batch No</th><th className={cell}>Exp</th>
+                      <th className={`${cell} pin w-[150px] min-w-[150px] sm:w-auto`}>Stock In No · Vendor</th><th className={cell}>Item</th><th className={cell}>Batch No</th><th className={cell}>Exp</th>
                       <th className={`${cell} ${r}`}>Quantity</th>{AMOUNT_HEADS.map((h) => <th key={h} className={`${cell} ${r}`}>{h}</th>)}
                       {isAdmin && <th className={`${cell} w-24 text-center`}>Edit / Delete</th>}
                     </tr>
@@ -205,16 +206,17 @@ export default function StockInList() {
                     return (
                       <Fragment key={itemId}>
                         <tr className="cursor-pointer bg-ink-50/70 font-semibold hover:bg-ink-100/70" onClick={() => toggle(`i${itemId}`)}>
-                          <td className={cell} colSpan={4}>
+                          <td className={`${cell} pin !bg-ink-50`}>
                             {isOpen ? <ChevronDown size={14} className="mr-1 inline" /> : <ChevronRight size={14} className="mr-1 inline" />}
                             {g.name} <span className="font-normal text-ink-400">· {g.lines.length} batch(es)</span>
                           </td>
+                          <td className={cell} colSpan={3} />
                           {totalsCells(t)}
                           {isAdmin && <td className={cell} />}
                         </tr>
                         {isOpen && g.lines.map((l) => (
                           <tr key={l.LineId}>
-                            <td className={`${cell} pl-7`}>{l.BatchNo}</td>
+                            <td className={`${cell} pin pl-7`}>{l.BatchNo}</td>
                             <td className={cell}>{expLabel(l.ExpDate)}</td>
                             <td className={`${cell} text-brand-700`} title={dateLabel(l.InDate)}>{l.StockInNo}</td>
                             <td className={cell}>{l.VendorName}</td>
@@ -236,14 +238,15 @@ export default function StockInList() {
                     return (
                       <Fragment key={date}>
                         <tr className="bg-ink-50/70 font-semibold">
-                          <td className={cell} colSpan={4}>{dateLabel(date)} <span className="font-normal text-ink-400">· {ins.size} Stock In(s) · {all.length} batch(es)</span></td>
+                          <td className={`${cell} pin !bg-ink-50`}>{dateLabel(date)} <span className="font-normal text-ink-400">· {ins.size} Stock In(s) · {all.length} batch(es)</span></td>
+                          <td className={cell} colSpan={3} />
                           {totalsCells(t)}
                           {isAdmin && <td className={cell} />}
                         </tr>
                         {[...ins.entries()].map(([sid, ls]) => ls.map((l, k) => (
-                          <tr key={l.LineId} className={k === 0 ? 'border-t-2 border-ink-300' : ''}>
+                          <tr key={l.LineId} className={k === 0 ? '[&>td]:border-t-2 [&>td]:border-t-ink-300' : ''}>
                             {k === 0 && (
-                              <td className={`${cell} align-middle`} rowSpan={ls.length}>
+                              <td className={`${cell} pin align-middle`} rowSpan={ls.length}>
                                 <div className="font-semibold text-brand-700">{l.StockInNo}</div>
                                 <div className="text-[11px] text-ink-500">{l.VendorName} · {l.OrderNo}</div>
                               </td>
@@ -265,7 +268,8 @@ export default function StockInList() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-ink-800 font-semibold text-white">
-                    <td className={cell} colSpan={4}>Total</td>
+                    <td className={`${cell} pin !bg-ink-800`}>Total</td>
+                    <td className={cell} colSpan={3} />
                     {totalsCells(total)}
                     {isAdmin && <td className={cell} />}
                   </tr>

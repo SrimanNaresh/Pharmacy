@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Receipt, Trash2, Save, X, List, Printer } from 'lucide-react';
+import { Receipt, Trash2, Save, X, List, Printer, Pencil, Plus, Check } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import { CardField, CardValue, ItemCard, cardBox, cardBad } from '../../components/MobileCard.jsx';
+import { usePhoneFit, PhoneFooter, PhoneTabs } from '../../components/PhoneLayout.jsx';
 import SalesBillReceipt from './SalesBillReceipt.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
@@ -181,7 +182,47 @@ export default function SalesBilling() {
   const hasProblem = billDiscBad || belowCost
     || filled.some((l) => l.loading || problemOf(l) || !(Number(l.qty) > 0) || !(Number(l.price) > 0));
 
+  // Phones: two tabs — New Item (a form for one line) and Bill Items (the lines
+  // added, with Edit / Delete). The form works on line `curKey`: the empty last
+  // line for a new item (held once an item is picked, as picking adds the next
+  // empty line), or a listed line while it's being edited.
+  const [saleTab, setSaleTab] = useState('new');
+  const [curKey, setCurKey] = useState(null);
+  const [curEditing, setCurEditing] = useState(false);
+  const formRef = useRef(null);
+  const cur = lines.find((l) => l.key === curKey) || lines[lines.length - 1];
+  // The item still being entered (not yet "Add to bill") isn't shown in the list.
+  const listed = filled.filter((l) => curEditing || l.key !== cur.key);
+  const addCur = () => {
+    if (!cur.itemId) return show('Pick an item first', 'error');
+    if (cur.loading) return show('Loading the batches…', 'error');
+    const problem = problemOf(cur);
+    if (problem) return show(Object.values(problem)[0], 'error');
+    if (!(Number(cur.qty) > 0)) return show('Enter a Quantity', 'error');
+    if (!(Number(cur.price) > 0)) return show('Enter a Sale Price', 'error');
+    show(curEditing ? 'Item updated' : `Item added — ${listed.length + 1} in the bill`, 'success');
+    if (curEditing) setSaleTab('list');
+    setCurEditing(false);
+    setCurKey(null); // back to the empty last line
+    if (!curEditing) setTimeout(() => formRef.current?.querySelector('input')?.focus(), 50);
+  };
+  const editLine = (l) => { setCurKey(l.key); setCurEditing(true); setSaleTab('new'); };
+  const clearCur = () => {
+    if (curEditing) { setCurEditing(false); setCurKey(null); return; }
+    if (cur.itemId) removeLine(cur.key);
+    setCurKey(null);
+  };
+  const deleteLine = (l) => {
+    if (!confirm(`Remove ${itemById.get(l.itemId)?.Name || 'this item'} from the bill?`)) return;
+    removeLine(l.key);
+    if (l.key === cur.key) { setCurEditing(false); setCurKey(null); }
+  };
+  const { pageRef, areaRef, footerRef, fit } = usePhoneFit([saleTab, editingId, curEditing, !!printBill, belowCost]);
+
   const resetForm = () => {
+    setCurKey(null);
+    setCurEditing(false);
+    setSaleTab('new');
     setEditingId(null);
     setLines([emptyLine()]);
     setCustomerName('');
@@ -213,6 +254,9 @@ export default function SalesBilling() {
       setBillDisc(Number(sale.DiscPercent) ? String(Number(sale.DiscPercent)) : '');
       setRoundOn(Number(sale.RoundOff) !== 0);
       setLines([...built, emptyLine()]);
+      setCurKey(null);
+      setCurEditing(false);
+      setSaleTab('list');
     } catch {
       show('Failed to load sale for editing', 'error');
     }
@@ -280,15 +324,15 @@ export default function SalesBilling() {
   const box = 'h-6 w-full rounded border border-transparent bg-transparent px-1 py-0 text-[13px] leading-6 hover:border-ink-200 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:hover:border-transparent';
 
   return (
-    <div>
-      <div className="card no-print max-md:!px-3">
-        <form onSubmit={save}>
+    <div ref={pageRef} className={fit.page} style={fit.pageStyle}>
+      <div className={`card no-print max-md:!px-3 ${fit.card}`}>
+        <form onSubmit={save} className={fit.form}>
           <CardHeader
             icon={Receipt}
             title={editingId ? 'Edit Sale' : 'Sales'}
-            subtitle={editingId ? 'Update this sale' : 'Counter sale from a batch'}
+            subtitle={<span className="hidden md:inline">{editingId ? 'Update this sale' : 'Counter sale from a batch'}</span>}
             actions={
-              <button type="button" className="btn-secondary" onClick={() => navigate('/pharmacy/sales-billing-list')}>
+              <button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/sales-billing-list')}>
                 <List size={16} /> View List
               </button>
             }
@@ -302,123 +346,160 @@ export default function SalesBilling() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <div>
+          <div className="grid grid-cols-[7rem_1fr] gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+            <div className="min-w-0">
               <label className="label">Date *</label>
-              <input type="date" className="input" value={transDate} onChange={(e) => setTransDate(e.target.value)} />
+              <input type="date" className="input max-md:!px-1.5" value={transDate} onChange={(e) => setTransDate(e.target.value)} />
             </div>
-            <div className="lg:col-span-2">
-              <label className="label">Customer Name *</label>
-              <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" />
+            <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto lg:col-span-2">
+              <label className="label max-md:hidden">Customer Name *</label>
+              <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name *" aria-label="Customer Name" />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="label">Mobile No</label>
               <input type="tel" inputMode="numeric" className="input" value={mobileNo} onChange={(e) => setMobileNo(e.target.value)} placeholder="e.g. 98765 43210" />
             </div>
           </div>
 
-          {/* Phones: one card per item (the last, empty one adds the next item) —
-              Batch · Sell by · MRP · Purchase Price, then Sale Price · Quantity · Disc% ·
-              Amount; the bill totals below. */}
-          <div className="mt-3 space-y-2.5 md:hidden">
-            {lines.map((l, r) => {
-              const item = itemById.get(l.itemId);
-              const b = batchOfLine(l);
-              const problem = problemOf(l);
-              const msg = problem && Object.values(problem)[0];
-              const tags = l.itemId ? [item?.Rack && `Rack ${item.Rack}`, item?.BoxNo && `Box ${item.BoxNo}`, b && `Stock ${stockIn(l, b)} ${l.saleUnit === 'unit' ? 'unit(s)' : 'pack(s)'}`].filter(Boolean) : [];
-              return (
-                <ItemCard
-                  key={l.key} no={r + 1} bad={!!msg}
-                  title={(
-                    <div className="flex items-center gap-1.5">
-                      <div className="min-w-0 flex-1">
-                        <SearchPick className="input" placeholder={l.itemId ? 'Search item...' : 'Search item to add...'} options={itemOptions} value={l.itemId} onChange={(v) => pickItem(l.key, v)} />
-                      </div>
-                      {l.itemId && <button type="button" className="rounded-lg p-1.5 text-red-500 hover:bg-red-50" title="Delete item" onClick={() => removeLine(l.key)}><Trash2 size={16} /></button>}
-                    </div>
+          {/* Phones: New Item / Bill Items tabs, then the bill totals. The New Item form
+              shows Batch · Sell by · MRP · Purchase Price, then Sale Price · Quantity ·
+              Disc% · Amount. */}
+          <div className={`mt-3 flex flex-col gap-2.5 md:hidden ${fit.section}`}>
+            <PhoneTabs tab={saleTab} onTab={setSaleTab} editing={curEditing} count={listed.length} listLabel="Bill Items" />
+            {/* The only part that scrolls on a phone. */}
+            <div ref={areaRef} className={`space-y-2.5 ${fit.area}`}>
+              {saleTab === 'new' && (() => {
+                const l = cur;
+                const item = itemById.get(l.itemId);
+                const b = batchOfLine(l);
+                const problem = problemOf(l);
+                const msg = problem && Object.values(problem)[0];
+                const tags = l.itemId ? [item?.Rack && `Rack ${item.Rack}`, item?.BoxNo && `Box ${item.BoxNo}`, b && `Stock ${stockIn(l, b)} ${l.saleUnit === 'unit' ? 'unit(s)' : 'pack(s)'}`].filter(Boolean) : [];
+                return (
+                  <div ref={formRef}>
+                    <ItemCard
+                      no={curEditing ? <Pencil size={10} /> : <Plus size={11} />} bad={!!msg}
+                      title={(
+                        <div className="flex items-center gap-1.5">
+                          <div className="min-w-0 flex-1">
+                            <SearchPick className="input" placeholder="Search item..." options={itemOptions} value={l.itemId} onChange={(v) => { setCurKey(l.key); pickItem(l.key, v); }} />
+                          </div>
+                          {l.itemId && <button type="button" className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100" title={curEditing ? 'Cancel edit' : 'Clear'} onClick={clearCur}><X size={16} /></button>}
+                        </div>
+                      )}
+                      sub={tags.length ? <span className="mt-1 flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded bg-white px-1.5 py-px text-[10px] font-semibold text-brand-700 ring-1 ring-brand-100">{t}</span>)}</span> : null}
+                    >
+                      {l.itemId ? (
+                        <>
+                          <div className="grid gap-1.5" style={{ gridTemplateColumns: '1.75fr 1.05fr 0.95fr 0.95fr' }}>
+                            <CardField label="Batch" note={b ? `Exp ${expLabel(b.ExpiryDate)}` : ''}>
+                              <select
+                                className={`${cardBox} !text-left`} disabled={l.loading || !l.batches.length} value={l.batch ?? ''}
+                                onChange={(e) => {
+                                  const bt = l.batches.find((x) => x.Batch === e.target.value);
+                                  setLine(l.key, { batch: e.target.value, ...(bt?.SelAmount != null ? { packPrice: String(bt.SelAmount), price: priceFor(l, bt.SelAmount, l.saleUnit) } : {}) });
+                                }}
+                              >
+                                {l.loading && <option value="">Loading…</option>}
+                                {!l.loading && !l.batches.length && <option value="">No stock</option>}
+                                {l.batches.map((bt) => <option key={bt.Batch} value={bt.Batch}>{bt.Batch || 'No batch'} ({qtyLabel(bt.AvailableQty)})</option>)}
+                              </select>
+                            </CardField>
+                            <CardField label="Sell by">
+                              <select className={`${cardBox} !text-left`} value={l.saleUnit} onChange={(e) => changeUnit(l, e.target.value)}>
+                                <option value="pack">Pack{sizeOf(l) > 1 ? ` (${sizeOf(l)})` : ''}</option>
+                                <option value="unit" disabled={sizeOf(l) <= 1}>Unit</option>
+                              </select>
+                            </CardField>
+                            <CardField label="MRP"><CardValue>{mrpOf(l) != null ? money(mrpOf(l)) : '-'}</CardValue></CardField>
+                            <CardField label="Pur. Price"><CardValue>{purchaseOf(l) != null ? money(purchaseOf(l)) : '-'}</CardValue></CardField>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            <CardField label="Sale Price">
+                              <input type="number" inputMode="decimal" step="0.01" min="0" className={`${cardBox} no-spin font-semibold ${problem?.price ? cardBad : ''}`} value={l.price} onChange={(e) => setLine(l.key, { price: e.target.value })} />
+                            </CardField>
+                            <CardField label="Quantity">
+                              <input type="number" inputMode="decimal" step="1" min="0" placeholder="0" className={`${cardBox} no-spin font-semibold ${problem?.qty ? cardBad : ''}`} value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} />
+                            </CardField>
+                            <CardField label="Disc %">
+                              <input type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="0" className={`${cardBox} no-spin ${problem?.disc ? cardBad : ''}`} value={l.disc} onChange={(e) => setLine(l.key, { disc: e.target.value })} />
+                            </CardField>
+                            <CardField label="Amount">
+                              <CardValue className={problem?.amount ? '!bg-red-50 font-bold text-red-700' : '!bg-brand-50 font-bold text-brand-800'}>{money(amountOf(l))}</CardValue>
+                            </CardField>
+                          </div>
+                          {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{msg}</p>}
+                          <div className="flex gap-2">
+                            {curEditing && <button type="button" className="btn-secondary flex-1" onClick={clearCur}><X size={16} /> Cancel</button>}
+                            <button type="button" className="btn-primary flex-[2]" onClick={addCur}>
+                              {curEditing ? <><Check size={16} /> Done</> : <><Plus size={16} /> Add to bill</>}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="px-1 py-0.5 text-[11.5px] text-ink-400">Search and pick an item, enter the Quantity, then tap <span className="font-semibold text-brand-700">Add to bill</span>.</p>
+                      )}
+                    </ItemCard>
+                  </div>
+                );
+              })()}
+
+              {saleTab === 'list' && (
+                <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+                  {listed.length === 0 && (
+                    <p className="px-3 py-5 text-center text-[12px] text-ink-400">
+                      No items yet — add them on the <button type="button" className="font-semibold text-brand-700" onClick={() => setSaleTab('new')}>New Item</button> tab.
+                    </p>
                   )}
-                  sub={tags.length ? <span className="mt-1 flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded bg-white px-1.5 py-px text-[10px] font-semibold text-brand-700 ring-1 ring-brand-100">{t}</span>)}</span> : null}
-                >
-                  {l.itemId ? (
-                    <>
-                      <div className="grid gap-1.5" style={{ gridTemplateColumns: '1.75fr 1.05fr 0.95fr 0.95fr' }}>
-                        <CardField label="Batch" note={b ? `Exp ${expLabel(b.ExpiryDate)}` : ''}>
-                          <select
-                            className={`${cardBox} !text-left`} disabled={l.loading || !l.batches.length} value={l.batch ?? ''}
-                            onChange={(e) => {
-                              const bt = l.batches.find((x) => x.Batch === e.target.value);
-                              setLine(l.key, { batch: e.target.value, ...(bt?.SelAmount != null ? { packPrice: String(bt.SelAmount), price: priceFor(l, bt.SelAmount, l.saleUnit) } : {}) });
-                            }}
-                          >
-                            {l.loading && <option value="">Loading…</option>}
-                            {!l.loading && !l.batches.length && <option value="">No stock</option>}
-                            {l.batches.map((bt) => <option key={bt.Batch} value={bt.Batch}>{bt.Batch || 'No batch'} ({qtyLabel(bt.AvailableQty)})</option>)}
-                          </select>
-                        </CardField>
-                        <CardField label="Sell by">
-                          <select className={`${cardBox} !text-left`} value={l.saleUnit} onChange={(e) => changeUnit(l, e.target.value)}>
-                            <option value="pack">Pack{sizeOf(l) > 1 ? ` (${sizeOf(l)})` : ''}</option>
-                            <option value="unit" disabled={sizeOf(l) <= 1}>Unit</option>
-                          </select>
-                        </CardField>
-                        <CardField label="MRP"><CardValue>{mrpOf(l) != null ? money(mrpOf(l)) : '-'}</CardValue></CardField>
-                        <CardField label="Pur. Price"><CardValue>{purchaseOf(l) != null ? money(purchaseOf(l)) : '-'}</CardValue></CardField>
+                  {listed.map((l, i) => {
+                    const problem = problemOf(l);
+                    const msg = problem && Object.values(problem)[0];
+                    return (
+                      <div key={l.key} className={`flex items-start gap-2 border-t border-ink-100 px-3 py-2 first:border-t-0 ${curEditing && l.key === cur.key ? 'bg-amber-50' : msg ? 'bg-red-50' : ''}`}>
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-600">{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words text-[13px] font-medium leading-snug text-ink-800">{itemById.get(l.itemId)?.Name || 'Item'}</p>
+                          <p className="text-[11px] leading-snug text-ink-500">
+                            {l.batch ? `Batch ${l.batch} · ` : ''}Qty {Number(l.qty) || 0} {l.saleUnit === 'unit' ? 'unit' : 'pack'} × ₹{money(l.price)}{Number(l.disc) ? ` · Disc ${Number(l.disc)}%` : ''}
+                          </p>
+                          {msg && <p className="text-[11px] text-red-600">{msg}</p>}
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end">
+                          <span className="text-[13px] font-bold tabular-nums text-brand-800">₹{money(amountOf(l))}</span>
+                          <div className="mt-0.5 flex gap-1">
+                            <button type="button" className="rounded-lg border border-brand-100 p-1 text-brand-600 hover:bg-brand-50" title="Edit" onClick={() => editLine(l)}><Pencil size={14} /></button>
+                            <button type="button" className="rounded-lg border border-red-100 p-1 text-red-500 hover:bg-red-50" title="Delete" onClick={() => deleteLine(l)}><Trash2 size={14} /></button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        <CardField label="Sale Price">
-                          <input type="number" inputMode="decimal" step="0.01" min="0" className={`${cardBox} no-spin font-semibold ${problem?.price ? cardBad : ''}`} value={l.price} onChange={(e) => setLine(l.key, { price: e.target.value })} />
-                        </CardField>
-                        <CardField label="Quantity">
-                          <input type="number" inputMode="decimal" step="1" min="0" placeholder="0" className={`${cardBox} no-spin font-semibold ${problem?.qty ? cardBad : ''}`} value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} />
-                        </CardField>
-                        <CardField label="Disc %">
-                          <input type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="0" className={`${cardBox} no-spin ${problem?.disc ? cardBad : ''}`} value={l.disc} onChange={(e) => setLine(l.key, { disc: e.target.value })} />
-                        </CardField>
-                        <CardField label="Amount">
-                          <CardValue className={problem?.amount ? '!bg-red-50 font-bold text-red-700' : '!bg-brand-50 font-bold text-brand-800'}>{money(amountOf(l))}</CardValue>
-                        </CardField>
-                      </div>
-                      {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{msg}</p>}
-                    </>
-                  ) : (
-                    <p className="px-1 py-0.5 text-[11.5px] text-ink-400">Pick an item above to add it to the bill.</p>
-                  )}
-                </ItemCard>
-              );
-            })}
-            <div className="overflow-hidden rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
-              <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-ink-600">Sub Total <span className="text-xs text-ink-400">· {filled.length} item(s)</span></span>
-                <span className="font-semibold tabular-nums text-ink-900">{money(subTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-1.5">
-                <label className="inline-flex items-center gap-2 text-ink-600">
-                  Bill Discount %
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 overflow-hidden rounded-xl border border-ink-200 bg-white text-[13px] shadow-sm">
+              <div className="flex items-center justify-between gap-2 px-3 py-1">
+                <span className="text-ink-600">Sub Total <b className="tabular-nums text-ink-900">{money(subTotal)}</b></span>
+                <label className="inline-flex items-center gap-1.5 text-ink-600">
+                  Bill Disc %
                   <input
                     type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="0"
-                    className={`h-7 w-16 rounded-lg border bg-white px-1.5 text-right text-[13px] tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
+                    className={`h-6 w-12 rounded-md border bg-white px-1 text-right text-[12px] tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
                     value={billDisc} onChange={(e) => setBillDisc(e.target.value)}
                   />
+                  {discountAmount > 0 && <span className="tabular-nums text-red-600">−{money(discountAmount)}</span>}
                 </label>
-                <span className={`tabular-nums ${discountAmount ? 'text-red-600' : 'text-ink-400'}`}>{discountAmount ? `− ${money(discountAmount)}` : money(0)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2 font-semibold">
-                <span className="text-ink-700">Total</span>
-                <span className={`tabular-nums ${belowCost ? 'text-red-600' : 'text-ink-900'}`}>{money(total)}</span>
               </div>
               {belowCost && !filled.some((l) => problemOf(l)?.amount) && (
-                <p className="bg-red-50 px-3 py-1.5 text-[11.5px] text-red-600">Total is below the purchase cost {money(totalCost)} — lower the Bill Discount</p>
+                <p className="bg-red-50 px-3 py-1 text-[11px] text-red-600">Below the purchase cost {money(totalCost)} — lower the Bill Discount</p>
               )}
-              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2">
-                <label className="inline-flex items-center gap-2 text-ink-600">
+              <div className="flex items-center justify-between gap-2 bg-brand-600 px-3 py-1 text-white">
+                <label className="inline-flex items-center gap-1.5 text-[12px] text-white/90" title={`Total ${money(total)} rounded to the nearest rupee`}>
                   <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
+                  <span className="tabular-nums">{roundOff > 0 ? '+' : roundOff < 0 ? '−' : ''}{money(Math.abs(roundOff))}</span>
                 </label>
-                <span className={`tabular-nums ${roundOff < 0 ? 'text-red-600' : 'text-ink-700'}`}>{roundOff > 0 ? '+ ' : roundOff < 0 ? '− ' : ''}{money(Math.abs(roundOff))}</span>
-              </div>
-              <div className="flex items-center justify-between bg-brand-600 px-3 py-2.5 text-white">
-                <span className="font-semibold">Net Amount</span>
-                <span className="text-lg font-bold tabular-nums">₹{money(netAmount)}</span>
+                <span className="text-[13px]"><span className="font-semibold">Net</span> <b className={`text-[15px] tabular-nums ${belowCost ? 'text-red-200' : ''}`}>₹{money(netAmount)}</b></span>
               </div>
             </div>
           </div>
@@ -581,22 +662,28 @@ export default function SalesBilling() {
             </table>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+          <div className="mt-2 grid shrink-0 grid-cols-3 gap-2 sm:mt-3 sm:flex sm:items-center sm:justify-end">
             <p className="mr-auto hidden text-[12px] text-ink-400 md:block">
               <kbd className="rounded border border-ink-200 bg-ink-50 px-1">Enter</kbd> moves Item → Batch → Sell by → Quantity → Disc% → next item. ↑ ↓ change the Batch / Sell by; ← → reach Sale Price.
             </p>
-            <button type="button" className="btn-secondary" onClick={() => (editingId ? navigate('/pharmacy/sales-billing-list') : resetForm())}>
+            <button type="button" className="btn-secondary max-sm:gap-1 max-sm:px-1" onClick={() => (editingId ? navigate('/pharmacy/sales-billing-list') : resetForm())}>
               <X size={16} /> Cancel
             </button>
-            <button type="button" className="btn-secondary" disabled={saving || hasProblem} title="Save the bill and print it" onClick={(e) => save(e, true)}>
-              <Printer size={16} /> {editingId ? 'Update & Print' : 'Save & Print'}
+            <button type="button" className="btn-secondary max-sm:gap-1 max-sm:px-1" disabled={saving || hasProblem} title="Save the bill and print it" onClick={(e) => save(e, true)}>
+              <Printer size={16} className="max-sm:hidden" /> <span className="sm:hidden">Save+Print</span><span className="hidden sm:inline">{editingId ? 'Update & Print' : 'Save & Print'}</span>
             </button>
-            <button type="submit" className="btn-primary max-sm:col-span-2" disabled={saving || hasProblem}>
+            <button type="submit" className="btn-primary max-sm:gap-1 max-sm:px-1" disabled={saving || hasProblem}>
               <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update' : 'Save'}
             </button>
           </div>
         </form>
       </div>
+
+      <PhoneFooter footerRef={footerRef}>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/sales-billing-list')}>
+          <List size={16} /> View List
+        </button>
+      </PhoneFooter>
 
       <SalesBillReceipt clinic={clinic} bill={printBill} />
 

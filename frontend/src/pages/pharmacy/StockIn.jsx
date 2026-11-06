@@ -7,6 +7,7 @@ import { gridKeys } from '../../components/grid/gridKeys.js';
 import { useToast } from '../../hooks/useToast.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { stockInApi, vendorApi } from '../../api/client.js';
+import { usePhoneFit, PhoneFooter } from '../../components/PhoneLayout.jsx';
 import { selAmount, purchaseLine, round2, unitsPerPack } from '../../utils/purchaseCalc.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -193,6 +194,9 @@ export default function StockIn() {
     setFill(emptyFill);
   };
 
+  // Phones: fit the page to the screen so only the item cards scroll.
+  const { pageRef, areaRef, footerRef, fit } = usePhoneFit([rows.length, ticked > 0, editing, orderId]);
+
   const problems = rows.map(rowProblem);
   const hasProblem = problems.some(Boolean);
   const receiving = rows.filter((r) => Number(r.qty || 0) > 0 || Number(r.free || 0) > 0);
@@ -260,14 +264,14 @@ export default function StockIn() {
   );
 
   return (
-    <div>
-      <div className="card max-md:!px-3">
-        <form onSubmit={save}>
+    <div ref={pageRef} className={fit.page} style={fit.pageStyle}>
+      <div className={`card max-md:!px-3 ${fit.card}`}>
+        <form onSubmit={save} className={fit.form}>
           <CardHeader
             icon={PackagePlus}
             title={editing ? `Edit Stock In · ${editing.no}` : 'Stock In'}
-            subtitle="Goods received against a purchase order — adds stock and sets the selling price"
-            actions={<button type="button" className="btn-secondary" onClick={() => navigate('/pharmacy/stock-in-list')}><List size={16} /> View List</button>}
+            subtitle={<span className="hidden md:inline">Goods received against a purchase order — adds stock and sets the selling price</span>}
+            actions={<button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/stock-in-list')}><List size={16} /> View List</button>}
           />
 
           {locked && (
@@ -276,21 +280,21 @@ export default function StockIn() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap">
-            <div className="w-full sm:w-72">
+          <div className="grid grid-cols-[1fr_7rem] items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
+            <div className="min-w-0 sm:w-72">
               <label className="label">Vendor Name *</label>
               <SearchPick className="input" placeholder="Search vendor..." options={vendorOptions} value={vendorId} onChange={pickVendor} disabled={!!editing} />
             </div>
-            <div className="w-full sm:w-80">
+            <div className="col-span-2 row-start-2 min-w-0 sm:w-80">
               <label className="label">Purchase No *</label>
               <select className="input" value={orderId} disabled={!vendorId || !!editing} onChange={(e) => pickOrder(e.target.value)}>
                 <option value="">{vendorId ? (orders.length ? 'Pick an order' : 'No orders left to receive for this vendor') : 'Pick a vendor first'}</option>
                 {orders.map((o) => <option key={o.PurchaseOrderId} value={o.PurchaseOrderId}>{`${o.OrderNo} · ${dateLabel(o.OrderDate)} · ₹${money(o.TotalAmount)}`}</option>)}
               </select>
             </div>
-            <div className="w-full sm:w-auto">
+            <div className="min-w-0 sm:w-auto">
               <label className="label">Date *</label>
-              <input type="date" className="input" value={inDate} onChange={(e) => setInDate(e.target.value)} />
+              <input type="date" className="input max-md:!px-1.5" value={inDate} onChange={(e) => setInDate(e.target.value)} />
             </div>
           </div>
 
@@ -307,16 +311,17 @@ export default function StockIn() {
 
           {/* Phones: one card per item — MRP · P.Rate · Order · Free · Batch, then
               Mf.Date · Exp.Date · S.Disc% · Sel.Amount; "More details" opens the rest. */}
-          <div className="mt-3 space-y-2.5 md:hidden">
+          <div className={`mt-3 flex flex-col gap-2.5 md:hidden ${fit.section}`}>
             {rows.length === 0 && (
               <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{orderId ? 'Loading the order…' : 'Pick a vendor and a purchase order to list its items.'}</p>
             )}
             {rows.length > 0 && (
-              <div className="flex items-center justify-between px-0.5">
+              <div className="flex shrink-0 items-center justify-between px-0.5">
                 <span className="text-[12px] font-semibold text-ink-600">{rows.length} item(s) · {receiving.length} receiving</span>
-                <button type="button" className="text-[12px] font-medium text-brand-600" onClick={toggleAll}>{allOpen ? 'Hide all details' : 'Show all details'}</button>
               </div>
             )}
+            {/* The only part that scrolls on a phone. */}
+            <div ref={areaRef} className={`space-y-2.5 ${fit.area}`}>
             {rows.map((r, i) => {
               const p = problems[i] || {};
               const sel = selAmount({ mrp: r.MRP, discPercent: r.disc });
@@ -393,10 +398,11 @@ export default function StockIn() {
                 </div>
               );
             })}
+            </div>
             {rows.length > 0 && (
-              <div className="flex items-center justify-between rounded-xl bg-brand-600 px-3 py-2.5 text-white shadow-sm">
-                <span className="text-sm font-semibold">Sum of Total</span>
-                <span className="text-lg font-bold tabular-nums">₹{money(orderTotal)}</span>
+              <div className="flex shrink-0 items-center justify-between rounded-xl bg-brand-600 px-3 py-1 text-white shadow-sm">
+                <span className="text-[13px] font-semibold">Sum of Total</span>
+                <span className="text-[15px] font-bold tabular-nums">₹{money(orderTotal)}</span>
               </div>
             )}
           </div>
@@ -532,11 +538,10 @@ export default function StockIn() {
             </table>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
             <p className="hidden text-xs text-ink-500 md:block">
               Received = R.Order + R.Free and starts at what's still due; typing it splits into R.Order first, then R.Free. Both go into stock, only R.Order is charged. Rows with nothing received are skipped. Sel.Amount = MRP less S.Disc% (selling discount); Sel.Amount › shows the Unit Price, Sel.Amount ÷ the units in the pack.
             </p>
-            <p className="text-[11px] text-ink-500 md:hidden">Order + Free = what is received now (only Order is charged). Sel.Amount = MRP less S.Disc%.</p>
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
               <button type="button" className="btn-secondary" onClick={() => (editing ? navigate('/pharmacy/stock-in-list') : reset())}><X size={16} /> Cancel</button>
               <button type="submit" className="btn-primary" disabled={saving || !!locked}><Save size={16} /> {saving ? 'Saving...' : editing ? 'Update' : 'Save'}</button>
@@ -544,6 +549,14 @@ export default function StockIn() {
           </div>
         </form>
       </div>
+      <PhoneFooter footerRef={footerRef}>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2" disabled={!rows.length} onClick={toggleAll}>
+          {allOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />} {allOpen ? 'Hide details' : 'All details'}
+        </button>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/stock-in-list')}>
+          <List size={16} /> View List
+        </button>
+      </PhoneFooter>
       <Toast toast={toast} />
     </div>
   );

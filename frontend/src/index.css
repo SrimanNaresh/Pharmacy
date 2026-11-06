@@ -86,6 +86,32 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* List screens: the first column (or the cells marked .pin) stays on the
+     left while the other columns scroll sideways under it — on a phone, or
+     whenever they don't fit. Cells carry the row lines, as separate borders
+     can't be drawn on rows. */
+  .list-pinned {
+    @apply border-separate border-spacing-0;
+  }
+  .list-pinned > thead > tr > th,
+  .list-pinned > tbody > tr > td {
+    @apply border-b border-ink-100;
+  }
+  .list-pinned.pin-first > thead > tr > :first-child,
+  .list-pinned.pin-first > tbody > tr > :first-child,
+  .list-pinned.pin-first > tfoot > tr > :first-child,
+  .list-pinned .pin {
+    @apply sticky left-0 z-[1] border-r border-ink-100 bg-white shadow-[4px_0_6px_-4px_rgba(15,23,42,0.15)];
+  }
+  .list-pinned.pin-first > thead > tr > :first-child,
+  .list-pinned > thead .pin {
+    @apply z-10 bg-ink-50;
+  }
+  .list-pinned > tbody > tr:hover > .pin,
+  .list-pinned.pin-first > tbody > tr:hover > :first-child {
+    background: #f5f8ff;
+  }
 }
 
 @page {

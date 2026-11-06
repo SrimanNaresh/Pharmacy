@@ -114,8 +114,8 @@ export default function SalesBillingList() {
         ) : rows.length === 0 ? (
           <EmptyState message="No sales found." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-lg">
+            <table className="list-pinned pin-first w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="table-head">
                   <th className="rounded-l-lg px-3 py-2">Sale No</th>

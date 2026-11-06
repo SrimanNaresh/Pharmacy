@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { RotateCcw, Save, X, List } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import { CardField, CardValue, ItemCard, cardBox, cardBad } from '../../components/MobileCard.jsx';
+import { usePhoneFit, PhoneFooter } from '../../components/PhoneLayout.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -110,6 +111,8 @@ export default function SalesReturnMaster() {
     return null;
   };
   const problems = rows.map(problemOf);
+  // Phones: fit the page to the screen so only the item cards scroll.
+  const { pageRef, areaRef, footerRef, fit } = usePhoneFit([rows.length, editing, saleId, findBy, sale?.DiscPercent]);
   const amountOf = (r) => saleLineAmount({ quantity: r.qty, rate: r.Rate, discPercent: r.DiscPercent });
   const returning = rows.filter((r) => Number(r.qty || 0) > 0);
   const bill = saleBill(returning.map(amountOf), sale?.DiscPercent || 0);
@@ -151,36 +154,36 @@ export default function SalesReturnMaster() {
   const tab = (on) => `rounded-md px-3 py-1.5 text-sm font-medium ${on ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-700'}`;
 
   return (
-    <div>
-      <div className="card max-md:!px-3">
-        <form onSubmit={save}>
+    <div ref={pageRef} className={fit.page} style={fit.pageStyle}>
+      <div className={`card max-md:!px-3 ${fit.card}`}>
+        <form onSubmit={save} className={fit.form}>
           <CardHeader
             icon={RotateCcw}
             title={editing ? `Edit Sales Return · ${editing.no}` : 'Sales Return'}
-            subtitle="Goods a customer brings back from one sale — adds the stock back"
-            actions={<button type="button" className="btn-secondary" onClick={() => navigate('/pharmacy/sales-return-list')}><List size={16} /> View List</button>}
+            subtitle={<span className="hidden md:inline">Goods a customer brings back from one sale — adds the stock back</span>}
+            actions={<button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/sales-return-list')}><List size={16} /> View List</button>}
           />
 
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="label">Find sale by</label>
-              <div className="inline-flex rounded-lg bg-ink-100 p-1">
+          <div className="grid grid-cols-[1fr_7rem] items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="label max-md:hidden">Find sale by</label>
+              <div className="grid grid-cols-2 rounded-lg bg-ink-100 p-1 sm:inline-flex">
                 <button type="button" className={tab(findBy === 'date')} disabled={!!editing} onClick={() => pickFindBy('date')}>Sales Date</button>
                 <button type="button" className={tab(findBy === 'customer')} disabled={!!editing} onClick={() => pickFindBy('customer')}>Customer</button>
               </div>
             </div>
             {findBy === 'date' ? (
-              <div>
+              <div className="min-w-0">
                 <label className="label">Sales Date *</label>
                 <input type="date" className="input" value={saleDate} max={today()} disabled={!!editing} onChange={(e) => pickSaleDate(e.target.value)} />
               </div>
             ) : (
-              <div className="w-full sm:w-72">
+              <div className="min-w-0 sm:w-72">
                 <label className="label">Customer *</label>
                 <SearchPick className="input" placeholder="Search customer or mobile..." options={customerOptions} value={customer} onChange={pickCustomer} disabled={!!editing} />
               </div>
             )}
-            <div className="w-full sm:w-96">
+            <div className="col-span-2 row-start-3 min-w-0 sm:w-96">
               <label className="label">Sale No *</label>
               <select className="input" value={saleId} disabled={!!editing} onChange={(e) => pickSale(e.target.value)}>
                 <option value="">
@@ -193,14 +196,14 @@ export default function SalesReturnMaster() {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="label">Return Date *</label>
-              <input type="date" className="input" value={returnDate} min={sale ? String(sale.TransDate).slice(0, 10) : undefined} onChange={(e) => setReturnDate(e.target.value)} />
+              <input type="date" className="input max-md:!px-1.5" value={returnDate} min={sale ? String(sale.TransDate).slice(0, 10) : undefined} onChange={(e) => setReturnDate(e.target.value)} />
             </div>
           </div>
 
           {sale && (
-            <p className="mt-2 text-sm text-ink-500">
+            <p className="mt-2 hidden text-sm text-ink-500 md:block">
               Customer <span className="font-medium text-ink-700">{sale.CustomerName || '-'}</span>
               {sale.MobileNo && <> · {sale.MobileNo}</>} · Sale Date {dateLabel(sale.TransDate)}
               {Number(sale.DiscPercent) > 0 && <> · Bill Discount {Number(sale.DiscPercent)}%</>}
@@ -209,7 +212,9 @@ export default function SalesReturnMaster() {
 
           {/* Phones: one card per sale line — Batch · Exp.Date · Unit · Sale Price · Disc %,
               then Sold · Returned · Return Qty · Amount; the refund totals below. */}
-          <div className="mt-3 space-y-2.5 md:hidden">
+          <div className={`mt-3 flex flex-col gap-2.5 md:hidden ${fit.section}`}>
+            {/* The only part that scrolls on a phone. */}
+            <div ref={areaRef} className={`space-y-2.5 ${fit.area}`}>
             {rows.length === 0 && (
               <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{saleId ? 'Loading…' : 'Pick a sale to list its items.'}</p>
             )}
@@ -246,21 +251,18 @@ export default function SalesReturnMaster() {
                 </ItemCard>
               );
             })}
+            </div>
             {rows.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-ink-600">Sub Total</span>
-                  <span className="font-semibold tabular-nums text-ink-900">{money(bill.subTotal)}</span>
+              <div className="shrink-0 overflow-hidden rounded-xl border border-ink-200 bg-white text-[13px] shadow-sm">
+                <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+                  <span className="text-ink-600">Sub Total <b className="tabular-nums text-ink-900">{money(bill.subTotal)}</b></span>
+                  {Number(sale?.DiscPercent) > 0 && (
+                    <span className="text-ink-600">Bill Disc {Number(sale.DiscPercent)}% <span className="tabular-nums text-red-600">-{money(bill.discountAmount)}</span></span>
+                  )}
                 </div>
-                {Number(sale?.DiscPercent) > 0 && (
-                  <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2">
-                    <span className="text-ink-600">Bill Discount {Number(sale.DiscPercent)}%</span>
-                    <span className="tabular-nums text-red-600">-{money(bill.discountAmount)}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between bg-brand-600 px-3 py-2.5 text-white">
+                <div className="flex items-center justify-between bg-brand-600 px-3 py-1 text-white">
                   <span className="font-semibold">Refund Amount</span>
-                  <span className="text-lg font-bold tabular-nums">₹{money(bill.total)}</span>
+                  <span className="text-[15px] font-bold tabular-nums">₹{money(bill.total)}</span>
                 </div>
               </div>
             )}
@@ -330,12 +332,17 @@ export default function SalesReturnMaster() {
             </table>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+          <div className="mt-3 grid shrink-0 grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button type="button" className="btn-secondary" onClick={() => (editing ? navigate('/pharmacy/sales-return-list') : reset())}><X size={16} /> Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving}><Save size={16} /> {saving ? 'Saving...' : editing ? 'Update' : 'Save'}</button>
           </div>
         </form>
       </div>
+      <PhoneFooter footerRef={footerRef}>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/sales-return-list')}>
+          <List size={16} /> View List
+        </button>
+      </PhoneFooter>
       <Toast toast={toast} />
     </div>
   );
