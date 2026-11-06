@@ -236,13 +236,13 @@ export default function StockIn() {
   // Headings: one line, aligned like their column's values. Headings with an
   // arrow keep room on the left for it, so the label still lines up with the
   // numbers on the right.
-  const hd = 'relative border border-ink-200 px-1 py-2 align-middle text-[10px] whitespace-nowrap xl:text-[11px]';
-  const hdArrow = 'relative border border-ink-200 py-2 pl-[20px] pr-1 align-middle text-[10px] whitespace-nowrap xl:text-[11px]';
+  const hd = 'relative border border-ink-200 px-1 py-2 align-middle text-10 whitespace-nowrap xl:text-11';
+  const hdArrow = 'relative border border-ink-200 py-2 pl-[20px] pr-1 align-middle text-10 whitespace-nowrap xl:text-11';
   // Each column's alignment, used by its heading and its cells alike: text to
   // the left, short codes and dates centred, numbers to the right.
   const AL = { item: 'text-left', batch: 'text-left', chk: 'text-center', pack: 'text-center', unit: 'text-center', month: 'text-center' };
   const al = (key) => AL[key] || 'text-right';
-  const box = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[12px] focus:border-brand-400 focus:bg-white focus:outline-none';
+  const box = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-12 focus:border-brand-400 focus:bg-white focus:outline-none';
   const bad = 'border-red-400 bg-red-50 text-red-700';
   const ro = 'px-1 text-right text-ink-600';
   // The order line's figures for what's being received now: R.Order units at
@@ -313,11 +313,11 @@ export default function StockIn() {
               Mf.Date · Exp.Date · S.Disc% · Sel.Amount; "More details" opens the rest. */}
           <div className={`mt-3 flex flex-col gap-2.5 md:hidden ${fit.section}`}>
             {rows.length === 0 && (
-              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{orderId ? 'Loading the order…' : 'Pick a vendor and a purchase order to list its items.'}</p>
+              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-12 text-ink-400">{orderId ? 'Loading the order…' : 'Pick a vendor and a purchase order to list its items.'}</p>
             )}
             {rows.length > 0 && (
               <div className="flex shrink-0 items-center justify-between px-0.5">
-                <span className="text-[12px] font-semibold text-ink-600">{rows.length} item(s) · {receiving.length} receiving</span>
+                <span className="text-12 font-semibold text-ink-600">{rows.length} item(s) · {receiving.length} receiving</span>
               </div>
             )}
             {/* The only part that scrolls on a phone. */}
@@ -330,34 +330,34 @@ export default function StockIn() {
               const msg = Object.values(p)[0];
               const oc = orderCalc(r);
               const open = openRows.has(r.PoLineId);
-              const mbox = 'h-[30px] w-full min-w-0 rounded-lg border border-ink-200 bg-white px-1 text-center text-[12px] tabular-nums shadow-sm placeholder:text-[10px] placeholder:text-ink-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100';
+              const mbox = 'h-[30px] w-full min-w-0 rounded-lg border border-ink-200 bg-white px-1 text-center text-12 tabular-nums shadow-sm placeholder:text-10 placeholder:text-ink-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100';
               // Every field: a heading, a box (typed or shown) and a note line, each the
               // same height, so the boxes line up across the row.
               const field = (label, boxEl, note = '') => (
                 <label className="block min-w-0">
-                  <span className="block h-4 truncate text-center text-[10px] font-semibold leading-4 text-ink-500">{label}</span>
+                  <span className="block h-4 truncate text-center text-10 font-semibold leading-4 text-ink-500">{label}</span>
                   {boxEl}
-                  <span className="block h-3.5 truncate text-center text-[9px] leading-[14px] text-ink-400">{note}</span>
+                  <span className="block h-3.5 truncate text-center text-9 leading-[14px] text-ink-400">{note}</span>
                 </label>
               );
-              const shown = (value, cls = '') => <div className={`flex h-[30px] items-center justify-center truncate rounded-lg bg-ink-50 px-1 text-[12px] tabular-nums text-ink-700 ${cls}`}>{value}</div>;
+              const shown = (value, cls = '') => <div className={`flex h-[30px] items-center justify-center truncate rounded-lg bg-ink-50 px-1 text-12 tabular-nums text-ink-700 ${cls}`}>{value}</div>;
               const d = (label, value, cls = '') => (
                 <div className="min-w-0">
-                  <p className="truncate text-[9.5px] font-semibold text-ink-400">{label}</p>
-                  <p className={`truncate text-[12px] tabular-nums text-ink-700 ${cls}`}>{value}</p>
+                  <p className="truncate text-9.5 font-semibold text-ink-400">{label}</p>
+                  <p className={`truncate text-12 tabular-nums text-ink-700 ${cls}`}>{value}</p>
                 </div>
               );
               return (
                 <div key={r.PoLineId} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${msg ? 'border-red-300' : skipped ? 'border-ink-200 opacity-75' : 'border-ink-200'}`}>
                   <div className="flex items-start gap-2 border-b border-ink-100 bg-brand-50/60 px-2.5 py-2">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">{i + 1}</span>
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-10 font-bold text-white">{i + 1}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold leading-snug text-ink-800">{r.ItemName}</p>
-                      <p className="text-[10.5px] text-ink-500">
+                      <p className="text-13 font-semibold leading-snug text-ink-800">{r.ItemName}</p>
+                      <p className="text-10.5 text-ink-500">
                         {[r.Pack, r.Unit && `Unit ${r.Unit}`].filter(Boolean).join(' · ')}{r.Pack || r.Unit ? ' · ' : ''}Ordered {r.Ordered}{Number(r.FreeOrdered) ? ` + ${r.FreeOrdered} free` : ''}
                       </p>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${skipped ? 'bg-ink-100 text-ink-500' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-10 font-semibold ${skipped ? 'bg-ink-100 text-ink-500' : 'bg-emerald-100 text-emerald-700'}`}>
                       {skipped ? 'Skipped' : `Receiving ${receivedOf(r)}`}
                     </span>
                   </div>
@@ -375,8 +375,8 @@ export default function StockIn() {
                       {field('S.Disc %', <input type="number" inputMode="decimal" min="0" max="100" step="0.01" className={`${mbox} no-spin ${p.disc ? bad : ''}`} value={r.disc} onChange={(e) => setRow(i, { disc: e.target.value })} />)}
                       {field('Sel.Amount', shown(money(sel), '!bg-brand-50 font-bold text-brand-800'), `${money(round2(sel / n))} / unit`)}
                     </div>
-                    {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{msg}</p>}
-                    <button type="button" className="flex w-full items-center justify-between rounded-lg bg-ink-50 px-2.5 py-1.5 text-[11.5px] font-medium text-ink-600" onClick={() => toggleRow(r.PoLineId)}>
+                    {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-11 text-red-600">{msg}</p>}
+                    <button type="button" className="flex w-full items-center justify-between rounded-lg bg-ink-50 px-2.5 py-1.5 text-11.5 font-medium text-ink-600" onClick={() => toggleRow(r.PoLineId)}>
                       <span className="flex items-center gap-1">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {open ? 'Hide details' : 'More details'}</span>
                       <span className="tabular-nums">Total <b className="text-ink-800">₹{money(oc.total)}</b></span>
                     </button>
@@ -389,7 +389,7 @@ export default function StockIn() {
                         {d('Disc %', Number(r.DiscPercent || 0))}
                         {d('Received earlier', `${r.Received}${Number(r.FreeReceived) ? ` + ${r.FreeReceived} free` : ''}`)}
                         {d('Unit Price', `${money(round2(sel / n))} ÷${n}`, 'text-emerald-700')}
-                        <label className="flex items-end gap-1.5 pb-0.5 text-[11px] text-ink-600" title="Tick items, then fill Batch / dates / discount for all of them at once">
+                        <label className="flex items-end gap-1.5 pb-0.5 text-11 text-ink-600" title="Tick items, then fill Batch / dates / discount for all of them at once">
                           <input type="checkbox" checked={r.ticked} onChange={() => setRow(i, { ticked: !r.ticked })} /> Bulk fill
                         </label>
                       </div>
@@ -401,8 +401,8 @@ export default function StockIn() {
             </div>
             {rows.length > 0 && (
               <div className="flex shrink-0 items-center justify-between rounded-xl bg-brand-600 px-3 py-1 text-white shadow-sm">
-                <span className="text-[13px] font-semibold">Sum of Total</span>
-                <span className="text-[15px] font-bold tabular-nums">₹{money(orderTotal)}</span>
+                <span className="text-13 font-semibold">Sum of Total</span>
+                <span className="text-15 font-bold tabular-nums">₹{money(orderTotal)}</span>
               </div>
             )}
           </div>
@@ -410,7 +410,7 @@ export default function StockIn() {
           <div className="mt-2 hidden overflow-x-auto md:block">
             {/* Fixed layout: each column has a share of the width, so either view fits the screen. */}
             {/* Too many columns to squeeze below ~1280px: from there down it scrolls sideways. */}
-            <table className="w-full table-fixed border-collapse text-left text-[12px]" style={{ minWidth: 1170 }} {...gridKeys}>
+            <table className="w-full table-fixed border-collapse text-left text-12" style={{ minWidth: 1170 }} {...gridKeys}>
               <thead>
                 <tr className="bg-brand-50 font-bold leading-tight text-brand-700">
                   <th className={`${hd} ${al('chk')}`} style={w('chk')}><input type="checkbox" checked={allTicked} onChange={tickAll} disabled={!rows.length} title="Tick all" /></th>
@@ -475,7 +475,7 @@ export default function StockIn() {
                       <td className={`${cell} text-center`}><input type="checkbox" checked={r.ticked} onChange={() => setRow(i, { ticked: !r.ticked })} /></td>
                       <td className={`${cell} px-1.5 font-medium ${skipped ? '' : 'text-ink-800'}`}>
                         {r.ItemName}
-                        {msg && <p className="text-[11px] font-normal text-red-600">{msg}</p>}
+                        {msg && <p className="text-11 font-normal text-red-600">{msg}</p>}
                       </td>
                       <td className={`${cell} px-1 text-center`}>{r.Pack}</td>
                       <td className={`${cell} px-1 text-center`}>{r.Unit}</td>
@@ -505,11 +505,11 @@ export default function StockIn() {
                       </td>
                       <td className={`${cell} !px-0`} title={`Ordered ${r.Ordered} · received earlier ${r.Received} · still due ${r.Due}`}>
                         <input type="number" min="0" step="any" data-r={i} data-c={1} className={`${box} no-spin text-right ${p.qty ? bad : ''}`} value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} />
-                        {r.Received > 0 && <p className="px-1 text-right text-[11px] text-ink-400">earlier: {r.Received}</p>}
+                        {r.Received > 0 && <p className="px-1 text-right text-11 text-ink-400">earlier: {r.Received}</p>}
                       </td>
                       <td className={`${cell} !px-0`} title={`Free ordered ${r.FreeOrdered} · received earlier ${r.FreeReceived} · still due ${r.FreeDue}`}>
                         <input type="number" min="0" step="any" data-r={i} data-c={2} className={`${box} no-spin text-right ${p.free ? bad : ''}`} value={r.free} onChange={(e) => setRow(i, { free: e.target.value })} />
-                        {r.FreeReceived > 0 && <p className="px-1 text-right text-[11px] text-ink-400">earlier: {r.FreeReceived}</p>}
+                        {r.FreeReceived > 0 && <p className="px-1 text-right text-11 text-ink-400">earlier: {r.FreeReceived}</p>}
                       </td>
                       <td className={`${cell} !px-0`}><input data-r={i} data-c={3} className={`${box} text-left ${p.batchNo ? bad : ''}`} value={r.batchNo} onChange={(e) => setRow(i, { batchNo: e.target.value })} /></td>
                       <td className={`${cell} !px-0`}><MonthBox data-r={i} data-c={4} className={`${box} text-center ${p.mfg ? bad : ''}`} value={r.mfg} onChange={(v) => setRow(i, { mfg: v })} /></td>
@@ -519,7 +519,7 @@ export default function StockIn() {
                       {showUnit && (
                         <td className={`${cell} px-1 text-right ${GROUP.sel.cell}`} title={`${money(sel)} ÷ ${n} units`}>
                           <span className="font-semibold">{money(round2(sel / n))}</span>
-                          <p className="text-[11px] text-emerald-700/70">÷ {n}</p>
+                          <p className="text-11 text-emerald-700/70">÷ {n}</p>
                         </td>
                       )}
                     </tr>

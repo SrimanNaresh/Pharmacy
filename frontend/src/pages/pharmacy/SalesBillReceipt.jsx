@@ -18,7 +18,7 @@ export default function SalesBillReceipt({ clinic, bill }) {
           <div className="mb-3 h-1.5 w-full rounded-full bg-brand-gradient" />
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-600">Sales Bill</p>
+              <p className="text-10 font-semibold uppercase tracking-wider text-teal-600">Sales Bill</p>
               <h1 className="text-xl font-bold leading-tight text-ink-800">{bill.code}</h1>
             </div>
             <div className="max-w-[260px] text-right">
@@ -87,7 +87,7 @@ export default function SalesBillReceipt({ clinic, bill }) {
 
         <div className="mt-8 border-t-2 border-brand-100 pt-4">
           <div className="h-1 w-full rounded-full bg-brand-gradient opacity-70" />
-          <p className="mt-2 text-center text-[10px] uppercase tracking-widest text-ink-300">
+          <p className="mt-2 text-center text-10 uppercase tracking-widest text-ink-300">
             This is a computer-generated bill
           </p>
         </div>

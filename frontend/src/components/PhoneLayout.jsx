@@ -63,7 +63,7 @@ export function PhoneFooter({ footerRef, children }) {
 // Phones: the New Item / list tab bar (the first tab turns amber while a listed
 // line is being edited).
 export function PhoneTabs({ tab, onTab, editing, count, newLabel = 'New Item', editLabel = 'Edit Item', listLabel }) {
-  const base = 'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-[13px] font-semibold transition-colors';
+  const base = 'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-13 font-semibold transition-colors';
   return (
     <div className="grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-ink-100 p-1">
       <button type="button" onClick={() => onTab('new')} className={`${base} ${tab === 'new' ? (editing ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-brand-700 shadow-sm') : 'text-ink-500'}`}>
@@ -71,7 +71,7 @@ export function PhoneTabs({ tab, onTab, editing, count, newLabel = 'New Item', e
       </button>
       <button type="button" onClick={() => onTab('list')} className={`${base} ${tab === 'list' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500'}`}>
         <List size={14} /> {listLabel}
-        <span className={`rounded-full px-1.5 text-[11px] ${count ? 'bg-brand-600 text-white' : 'bg-ink-200 text-ink-500'}`}>{count}</span>
+        <span className={`rounded-full px-1.5 text-11 ${count ? 'bg-brand-600 text-white' : 'bg-ink-200 text-ink-500'}`}>{count}</span>
       </button>
     </div>
   );

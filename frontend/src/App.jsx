@@ -53,10 +53,10 @@ function UserMenu() {
         className="flex items-center gap-2 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-ink-100"
         title="Signed in"
       >
-        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-gradient text-[11px] font-semibold text-white shadow-sm">
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-gradient text-11 font-semibold text-white shadow-sm">
           {initials}
         </div>
-        <p className="hidden text-[13px] font-semibold text-ink-700 sm:block">{user?.username || 'Account'}</p>
+        <p className="hidden text-13 font-semibold text-ink-700 sm:block">{user?.username || 'Account'}</p>
         <ChevronDown size={14} className="hidden text-ink-400 sm:block" />
       </button>
 
@@ -111,7 +111,7 @@ function AppLayout({ appName }) {
             <p className="hidden truncate text-xs text-ink-300 md:block">Pharmacy management</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-1.5 rounded-full border border-ink-100 bg-ink-50 px-2.5 py-0.5 text-[11px] text-ink-400 sm:flex">
+            <div className="hidden items-center gap-1.5 rounded-full border border-ink-100 bg-ink-50 px-2.5 py-0.5 text-11 text-ink-400 sm:flex">
               <span className="h-1.5 w-1.5 rounded-full bg-teal-500" /> Connected
             </div>
             <UserMenu />

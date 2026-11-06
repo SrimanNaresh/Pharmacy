@@ -117,7 +117,7 @@ export default function VendorPaymentEntry() {
     }
   };
 
-  const th = 'border border-ink-200 px-1.5 py-1 text-center text-[11px] font-semibold whitespace-nowrap';
+  const th = 'border border-ink-200 px-1.5 py-1 text-center text-11 font-semibold whitespace-nowrap';
   const td = 'border border-ink-200 px-1.5 py-0.5';
   const tdNum = `${td} text-right tabular-nums`;
   const sumRow = (label, value, cls = '') => (
@@ -180,7 +180,7 @@ export default function VendorPaymentEntry() {
             </div>
 
             <div className="mt-2 overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse text-[12px]">
+              <table className="w-full min-w-[900px] border-collapse text-12">
                 <thead className="bg-brand-50 text-brand-800">
                   <tr>
                     <th className={th}>#</th>
@@ -260,7 +260,7 @@ export default function VendorPaymentEntry() {
 
                 <h4 className="mb-1 mt-3 text-sm font-bold text-ink-800">Payments made</h4>
                 {inv.payments.length ? (
-                  <table className="w-full border-collapse text-[12px]">
+                  <table className="w-full border-collapse text-12">
                     <thead className="bg-ink-50 text-ink-600">
                       <tr>
                         <th className={th}>Payment No</th>

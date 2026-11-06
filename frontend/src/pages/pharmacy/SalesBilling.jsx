@@ -319,9 +319,9 @@ export default function SalesBilling() {
   // Compact grid: one-line headings, short rows, light lines, and boxes that
   // only show their border on hover / focus.
   const cell = 'border-b border-r border-ink-100 px-1.5 py-0 align-middle';
-  const th = 'border-b border-r border-brand-100 px-1.5 py-1 text-[12px] font-semibold whitespace-nowrap';
+  const th = 'border-b border-r border-brand-100 px-1.5 py-1 text-12 font-semibold whitespace-nowrap';
   const num = 'text-right tabular-nums';
-  const box = 'h-6 w-full rounded border border-transparent bg-transparent px-1 py-0 text-[13px] leading-6 hover:border-ink-200 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:hover:border-transparent';
+  const box = 'h-6 w-full rounded border border-transparent bg-transparent px-1 py-0 text-13 leading-6 hover:border-ink-200 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:hover:border-transparent';
 
   return (
     <div ref={pageRef} className={fit.page} style={fit.pageStyle}>
@@ -387,7 +387,7 @@ export default function SalesBilling() {
                           {l.itemId && <button type="button" className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100" title={curEditing ? 'Cancel edit' : 'Clear'} onClick={clearCur}><X size={16} /></button>}
                         </div>
                       )}
-                      sub={tags.length ? <span className="mt-1 flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded bg-white px-1.5 py-px text-[10px] font-semibold text-brand-700 ring-1 ring-brand-100">{t}</span>)}</span> : null}
+                      sub={tags.length ? <span className="mt-1 flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded bg-white px-1.5 py-px text-10 font-semibold text-brand-700 ring-1 ring-brand-100">{t}</span>)}</span> : null}
                     >
                       {l.itemId ? (
                         <>
@@ -428,7 +428,7 @@ export default function SalesBilling() {
                               <CardValue className={problem?.amount ? '!bg-red-50 font-bold text-red-700' : '!bg-brand-50 font-bold text-brand-800'}>{money(amountOf(l))}</CardValue>
                             </CardField>
                           </div>
-                          {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{msg}</p>}
+                          {msg && <p className="rounded-md bg-red-50 px-2 py-1 text-11 text-red-600">{msg}</p>}
                           <div className="flex gap-2">
                             {curEditing && <button type="button" className="btn-secondary flex-1" onClick={clearCur}><X size={16} /> Cancel</button>}
                             <button type="button" className="btn-primary flex-[2]" onClick={addCur}>
@@ -437,7 +437,7 @@ export default function SalesBilling() {
                           </div>
                         </>
                       ) : (
-                        <p className="px-1 py-0.5 text-[11.5px] text-ink-400">Search and pick an item, enter the Quantity, then tap <span className="font-semibold text-brand-700">Add to bill</span>.</p>
+                        <p className="px-1 py-0.5 text-11.5 text-ink-400">Search and pick an item, enter the Quantity, then tap <span className="font-semibold text-brand-700">Add to bill</span>.</p>
                       )}
                     </ItemCard>
                   </div>
@@ -447,7 +447,7 @@ export default function SalesBilling() {
               {saleTab === 'list' && (
                 <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
                   {listed.length === 0 && (
-                    <p className="px-3 py-5 text-center text-[12px] text-ink-400">
+                    <p className="px-3 py-5 text-center text-12 text-ink-400">
                       No items yet — add them on the <button type="button" className="font-semibold text-brand-700" onClick={() => setSaleTab('new')}>New Item</button> tab.
                     </p>
                   )}
@@ -456,16 +456,16 @@ export default function SalesBilling() {
                     const msg = problem && Object.values(problem)[0];
                     return (
                       <div key={l.key} className={`flex items-start gap-2 border-t border-ink-100 px-3 py-2 first:border-t-0 ${curEditing && l.key === cur.key ? 'bg-amber-50' : msg ? 'bg-red-50' : ''}`}>
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-600">{i + 1}</span>
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-10 font-bold text-ink-600">{i + 1}</span>
                         <div className="min-w-0 flex-1">
-                          <p className="break-words text-[13px] font-medium leading-snug text-ink-800">{itemById.get(l.itemId)?.Name || 'Item'}</p>
-                          <p className="text-[11px] leading-snug text-ink-500">
+                          <p className="break-words text-13 font-medium leading-snug text-ink-800">{itemById.get(l.itemId)?.Name || 'Item'}</p>
+                          <p className="text-11 leading-snug text-ink-500">
                             {l.batch ? `Batch ${l.batch} · ` : ''}Qty {Number(l.qty) || 0} {l.saleUnit === 'unit' ? 'unit' : 'pack'} × ₹{money(l.price)}{Number(l.disc) ? ` · Disc ${Number(l.disc)}%` : ''}
                           </p>
-                          {msg && <p className="text-[11px] text-red-600">{msg}</p>}
+                          {msg && <p className="text-11 text-red-600">{msg}</p>}
                         </div>
                         <div className="flex shrink-0 flex-col items-end">
-                          <span className="text-[13px] font-bold tabular-nums text-brand-800">₹{money(amountOf(l))}</span>
+                          <span className="text-13 font-bold tabular-nums text-brand-800">₹{money(amountOf(l))}</span>
                           <div className="mt-0.5 flex gap-1">
                             <button type="button" className="rounded-lg border border-brand-100 p-1 text-brand-600 hover:bg-brand-50" title="Edit" onClick={() => editLine(l)}><Pencil size={14} /></button>
                             <button type="button" className="rounded-lg border border-red-100 p-1 text-red-500 hover:bg-red-50" title="Delete" onClick={() => deleteLine(l)}><Trash2 size={14} /></button>
@@ -478,35 +478,35 @@ export default function SalesBilling() {
               )}
             </div>
 
-            <div className="shrink-0 overflow-hidden rounded-xl border border-ink-200 bg-white text-[13px] shadow-sm">
+            <div className="shrink-0 overflow-hidden rounded-xl border border-ink-200 bg-white text-13 shadow-sm">
               <div className="flex items-center justify-between gap-2 px-3 py-1">
                 <span className="text-ink-600">Sub Total <b className="tabular-nums text-ink-900">{money(subTotal)}</b></span>
                 <label className="inline-flex items-center gap-1.5 text-ink-600">
                   Bill Disc %
                   <input
                     type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="0"
-                    className={`h-6 w-12 rounded-md border bg-white px-1 text-right text-[12px] tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
+                    className={`h-6 w-12 rounded-md border bg-white px-1 text-right text-12 tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
                     value={billDisc} onChange={(e) => setBillDisc(e.target.value)}
                   />
                   {discountAmount > 0 && <span className="tabular-nums text-red-600">−{money(discountAmount)}</span>}
                 </label>
               </div>
               {belowCost && !filled.some((l) => problemOf(l)?.amount) && (
-                <p className="bg-red-50 px-3 py-1 text-[11px] text-red-600">Below the purchase cost {money(totalCost)} — lower the Bill Discount</p>
+                <p className="bg-red-50 px-3 py-1 text-11 text-red-600">Below the purchase cost {money(totalCost)} — lower the Bill Discount</p>
               )}
               <div className="flex items-center justify-between gap-2 bg-brand-600 px-3 py-1 text-white">
-                <label className="inline-flex items-center gap-1.5 text-[12px] text-white/90" title={`Total ${money(total)} rounded to the nearest rupee`}>
+                <label className="inline-flex items-center gap-1.5 text-12 text-white/90" title={`Total ${money(total)} rounded to the nearest rupee`}>
                   <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
                   <span className="tabular-nums">{roundOff > 0 ? '+' : roundOff < 0 ? '−' : ''}{money(Math.abs(roundOff))}</span>
                 </label>
-                <span className="text-[13px]"><span className="font-semibold">Net</span> <b className={`text-[15px] tabular-nums ${belowCost ? 'text-red-200' : ''}`}>₹{money(netAmount)}</b></span>
+                <span className="text-13"><span className="font-semibold">Net</span> <b className={`text-15 tabular-nums ${belowCost ? 'text-red-200' : ''}`}>₹{money(netAmount)}</b></span>
               </div>
             </div>
           </div>
 
           <div className="mt-3 hidden overflow-x-auto rounded-lg border border-ink-200 shadow-sm md:block">
             {/* Fixed column shares (adding up to 100%) so every heading stays on one line. */}
-            <table className="w-full min-w-[1100px] table-fixed border-collapse text-left text-[13px]" {...gridKeys}>
+            <table className="w-full min-w-[1100px] table-fixed border-collapse text-left text-13" {...gridKeys}>
               <thead>
                 <tr className="bg-gradient-to-b from-brand-50 to-brand-100/60 text-brand-800">
                   <th className={`${th} w-[3%] text-center`}>#</th>
@@ -532,7 +532,7 @@ export default function SalesBilling() {
                   const problem = problemOf(l);
                   return (
                     <tr key={l.key} className="transition-colors even:bg-slate-50/60 hover:bg-brand-50/40">
-                      <td className={`${cell} text-center text-[12px] text-ink-400`}>{r + 1}</td>
+                      <td className={`${cell} text-center text-12 text-ink-400`}>{r + 1}</td>
                       <td className={cell}>
                         <SearchPick
                           className={box} data-r={r} data-c={0} placeholder="Search item..."
@@ -567,8 +567,8 @@ export default function SalesBilling() {
                           <option value="unit" disabled={!!l.itemId && sizeOf(l) <= 1}>Unit</option>
                         </select>
                       </td>
-                      <td className={`${cell} text-center`}>{item?.Rack && <span className="rounded bg-brand-50 px-1.5 py-px text-[11px] font-semibold text-brand-700 ring-1 ring-brand-100">{item.Rack}</span>}</td>
-                      <td className={`${cell} text-center`}>{item?.BoxNo && <span className="rounded bg-brand-50 px-1.5 py-px text-[11px] font-semibold text-brand-700 ring-1 ring-brand-100">{item.BoxNo}</span>}</td>
+                      <td className={`${cell} text-center`}>{item?.Rack && <span className="rounded bg-brand-50 px-1.5 py-px text-11 font-semibold text-brand-700 ring-1 ring-brand-100">{item.Rack}</span>}</td>
+                      <td className={`${cell} text-center`}>{item?.BoxNo && <span className="rounded bg-brand-50 px-1.5 py-px text-11 font-semibold text-brand-700 ring-1 ring-brand-100">{item.BoxNo}</span>}</td>
                       <td className={`${cell} ${num} text-ink-600`}>{b ? stockIn(l, b) : ''}</td>
                       <td className={`${cell} ${num} text-ink-500`}>{l.itemId && mrpOf(l) != null ? money(mrpOf(l)) : ''}</td>
                       <td className={`${cell} ${num} text-ink-500`}>{l.itemId && purchaseOf(l) != null ? money(purchaseOf(l)) : ''}</td>
@@ -580,7 +580,7 @@ export default function SalesBilling() {
                           onChange={(e) => setLine(l.key, { price: e.target.value })}
                           onKeyDown={enterTo(() => setFocusAt({ key: l.key, c: 4 }))}
                         />
-                        {problem?.price && <p className="px-1 text-[11px] text-red-600">{problem.price}</p>}
+                        {problem?.price && <p className="px-1 text-11 text-red-600">{problem.price}</p>}
                       </td>
                       <td className={cell}>
                         <input
@@ -590,7 +590,7 @@ export default function SalesBilling() {
                           onChange={(e) => setLine(l.key, { qty: e.target.value })}
                           onKeyDown={enterTo(() => setFocusAt({ key: l.key, c: 5 }))}
                         />
-                        {problem?.qty && <p className="px-1 text-[11px] text-red-600">{problem.qty}</p>}
+                        {problem?.qty && <p className="px-1 text-11 text-red-600">{problem.qty}</p>}
                       </td>
                       <td className={cell}>
                         <input
@@ -600,11 +600,11 @@ export default function SalesBilling() {
                           onChange={(e) => setLine(l.key, { disc: e.target.value })}
                           onKeyDown={enterTo(() => nextItem(l.key))}
                         />
-                        {problem?.disc && <p className="px-1 text-[11px] text-red-600">{problem.disc}</p>}
+                        {problem?.disc && <p className="px-1 text-11 text-red-600">{problem.disc}</p>}
                       </td>
                       <td className={`${cell} ${num} font-semibold ${problem?.amount ? 'bg-red-50 text-red-700' : 'text-ink-900'}`} title={problem?.amount ? `Amount is below the purchase cost (${money(costOf(l))})` : undefined}>
                         {l.itemId ? money(amountOf(l)) : ''}
-                        {problem?.amount && <p className="text-[11px] font-normal leading-tight text-red-600">{problem.amount}</p>}
+                        {problem?.amount && <p className="text-11 font-normal leading-tight text-red-600">{problem.amount}</p>}
                       </td>
                       <td className={`${cell} border-r-0 !px-0.5`}>
                         <div className="flex justify-center">
@@ -617,17 +617,17 @@ export default function SalesBilling() {
               </tbody>
               <tfoot>
                 <tr className="text-ink-700">
-                  <td className="px-2 pt-1 text-right text-[12px] text-ink-500" colSpan={12}>Sub Total</td>
+                  <td className="px-2 pt-1 text-right text-12 text-ink-500" colSpan={12}>Sub Total</td>
                   <td className={`px-2 pt-1 ${num}`}>{money(subTotal)}</td>
                   <td />
                 </tr>
                 <tr className="text-ink-700">
-                  <td className="px-2 py-0.5 text-right text-[12px] text-ink-500" colSpan={12}>
+                  <td className="px-2 py-0.5 text-right text-12 text-ink-500" colSpan={12}>
                     <span className="inline-flex items-center gap-1.5">
                       Bill Discount %
                       <input
                         type="number" step="0.01" min="0" max="100" placeholder="0"
-                        className={`h-6 w-20 rounded border bg-white px-1.5 py-0 text-right text-[13px] tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
+                        className={`h-6 w-20 rounded border bg-white px-1.5 py-0 text-right text-13 tabular-nums no-spin focus:outline-none focus:ring-2 ${billDiscBad || (belowCost && discountAmount > 0) ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-100' : 'border-ink-200 focus:border-brand-400 focus:ring-brand-100'}`}
                         value={billDisc} onChange={(e) => setBillDisc(e.target.value)}
                         title="Discount on the whole bill, taken off the Sub Total"
                       />
@@ -637,15 +637,15 @@ export default function SalesBilling() {
                   <td />
                 </tr>
                 <tr className="border-t border-brand-100 bg-brand-50/70 font-semibold text-ink-800">
-                  <td className="px-2 py-1 text-right text-[12px] uppercase tracking-wide text-ink-500" colSpan={12}>
+                  <td className="px-2 py-1 text-right text-12 uppercase tracking-wide text-ink-500" colSpan={12}>
                     {belowCost && !filled.some((l) => problemOf(l)?.amount) && <span className="mr-3 normal-case tracking-normal text-red-600">Total is below the purchase cost {money(totalCost)} — lower the Bill Discount</span>}
                     Total
                   </td>
-                  <td className={`px-2 py-1 ${num} text-[14px] font-bold ${belowCost ? 'text-red-600' : 'text-brand-800'}`}>{money(total)}</td>
+                  <td className={`px-2 py-1 ${num} text-14 font-bold ${belowCost ? 'text-red-600' : 'text-brand-800'}`}>{money(total)}</td>
                   <td />
                 </tr>
                 <tr className="text-ink-700">
-                  <td className="px-2 py-0.5 text-right text-[12px] text-ink-500" colSpan={12}>
+                  <td className="px-2 py-0.5 text-right text-12 text-ink-500" colSpan={12}>
                     <label className="inline-flex cursor-pointer items-center gap-1.5" title="Round the Total to the nearest rupee">
                       <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
                     </label>
@@ -654,8 +654,8 @@ export default function SalesBilling() {
                   <td />
                 </tr>
                 <tr className="border-t border-brand-100 bg-brand-50/70 font-semibold text-ink-800">
-                  <td className="px-2 py-1 text-right text-[12px] uppercase tracking-wide text-ink-500" colSpan={12}>Net Amount</td>
-                  <td className={`px-2 py-1 ${num} text-[15px] font-bold text-brand-800`}>{money(netAmount)}</td>
+                  <td className="px-2 py-1 text-right text-12 uppercase tracking-wide text-ink-500" colSpan={12}>Net Amount</td>
+                  <td className={`px-2 py-1 ${num} text-15 font-bold text-brand-800`}>{money(netAmount)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -663,7 +663,7 @@ export default function SalesBilling() {
           </div>
 
           <div className="mt-2 grid shrink-0 grid-cols-3 gap-2 sm:mt-3 sm:flex sm:items-center sm:justify-end">
-            <p className="mr-auto hidden text-[12px] text-ink-400 md:block">
+            <p className="mr-auto hidden text-12 text-ink-400 md:block">
               <kbd className="rounded border border-ink-200 bg-ink-50 px-1">Enter</kbd> moves Item → Batch → Sell by → Quantity → Disc% → next item. ↑ ↓ change the Batch / Sell by; ← → reach Sale Price.
             </p>
             <button type="button" className="btn-secondary max-sm:gap-1 max-sm:px-1" onClick={() => (editingId ? navigate('/pharmacy/sales-billing-list') : resetForm())}>

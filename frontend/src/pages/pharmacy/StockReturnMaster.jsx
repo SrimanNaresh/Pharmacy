@@ -116,7 +116,7 @@ export default function StockReturnMaster() {
 
   const cell = 'border border-ink-200 px-1 py-0.5';
   const ro = 'px-1.5 text-right text-ink-600';
-  const box = 'w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[13px] focus:border-brand-400 focus:bg-white focus:outline-none';
+  const box = 'w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-13 focus:border-brand-400 focus:bg-white focus:outline-none';
 
   return (
     <div ref={pageRef} className={fit.page} style={fit.pageStyle}>
@@ -153,7 +153,7 @@ export default function StockReturnMaster() {
             {/* The only part that scrolls on a phone. */}
             <div ref={areaRef} className={`space-y-2.5 ${fit.area}`}>
             {rows.length === 0 && (
-              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-[12px] text-ink-400">{stockInId ? 'Loading…' : 'Pick a vendor and a Stock In to list its batches.'}</p>
+              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-5 text-center text-12 text-ink-400">{stockInId ? 'Loading…' : 'Pick a vendor and a Stock In to list its batches.'}</p>
             )}
             {rows.map((r, i) => {
               const none = r.Left <= 0 && !Number(r.qty);
@@ -183,21 +183,21 @@ export default function StockReturnMaster() {
                     </CardField>
                     <CardField label="Amount"><CardValue className="!bg-brand-50 font-bold text-brand-800">{returningQty ? money(Number(r.qty) * Number(r.Rate)) : '0.00'}</CardValue></CardField>
                   </div>
-                  {p && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{p}</p>}
+                  {p && <p className="rounded-md bg-red-50 px-2 py-1 text-11 text-red-600">{p}</p>}
                 </ItemCard>
               );
             })}
             </div>
             {rows.length > 0 && (
               <div className="flex shrink-0 items-center justify-between rounded-xl bg-brand-600 px-3 py-1 text-white shadow-sm">
-                <span className="text-[13px] font-semibold">Sum of Total <span className="text-xs font-normal text-white/80">· {returning.length} returning</span></span>
-                <span className="text-[15px] font-bold tabular-nums">₹{money(total)}</span>
+                <span className="text-13 font-semibold">Sum of Total <span className="text-xs font-normal text-white/80">· {returning.length} returning</span></span>
+                <span className="text-15 font-bold tabular-nums">₹{money(total)}</span>
               </div>
             )}
           </div>
 
           <div className="mt-3 hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[860px] border-collapse text-left text-[13px]" {...gridKeys}>
+            <table className="w-full min-w-[860px] border-collapse text-left text-13" {...gridKeys}>
               <thead>
                 <tr className="bg-brand-50 font-bold text-brand-700">
                   <th className={`${cell} min-w-[180px] px-1.5`}>Item Name</th>
@@ -220,7 +220,7 @@ export default function StockReturnMaster() {
                   const p = problems[i];
                   return (
                     <tr key={r.StockInLineId} className={none ? 'text-ink-400' : ''} title={none ? 'Nothing left to return on this line' : p || ''}>
-                      <td className={`${cell} px-1.5 font-medium`}>{r.ItemName}{p && <p className="text-[11px] font-normal text-red-600">{p}</p>}</td>
+                      <td className={`${cell} px-1.5 font-medium`}>{r.ItemName}{p && <p className="text-11 font-normal text-red-600">{p}</p>}</td>
                       <td className={`${cell} px-1.5`}>{r.BatchNo}</td>
                       <td className={`${cell} px-1.5`}>{monthLabel(r.MfgDate)}</td>
                       <td className={`${cell} px-1.5`}>{monthLabel(r.ExpDate)}</td>

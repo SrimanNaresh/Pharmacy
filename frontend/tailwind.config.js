@@ -3,6 +3,20 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      // Text sizes named by their px at the 18px root (text-13 = 13px there). In rem,
+      // so every size follows the root size, which is set per screen width in index.css.
+      fontSize: {
+        '9': '0.5rem',
+        '9.5': '0.5278rem',
+        '10': '0.5556rem',
+        '10.5': '0.5833rem',
+        '11': '0.6111rem',
+        '11.5': '0.6389rem',
+        '12': '0.6667rem',
+        '13': '0.7222rem',
+        '14': '0.7778rem',
+        '15': '0.8333rem',
+      },
       colors: {
         // Primary brand — professional medical teal/indigo blend
         brand: {

@@ -355,8 +355,8 @@ export default function PurchaseOrder() {
   const cell = 'border border-ink-200 px-1 py-0.5 break-words';
   // Headings centred both ways (Item Name stays left); one line on wide
   // screens, smaller and allowed to wrap on narrower ones.
-  const hd = 'border border-ink-200 px-0.5 py-1.5 text-center align-middle text-[10px] xl:text-[11px] xl:whitespace-nowrap';
-  const box = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[12px] focus:border-brand-400 focus:bg-white focus:outline-none';
+  const hd = 'border border-ink-200 px-0.5 py-1.5 text-center align-middle text-10 xl:text-11 xl:whitespace-nowrap';
+  const box = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-12 focus:border-brand-400 focus:bg-white focus:outline-none';
   const numBox = `${box} no-spin text-right`;
   const opt = 'bg-amber-50 text-amber-900';
   // The › arrow swaps the four GST columns for the three item-detail columns.
@@ -460,7 +460,7 @@ export default function PurchaseOrder() {
                     <label key={i.ItemId} className={`flex items-center gap-2 rounded px-1.5 py-0.5 text-sm ${added ? 'text-ink-400' : 'cursor-pointer text-ink-700 hover:bg-white'}`}>
                       <input type="checkbox" checked={added || bulk.ticked.has(String(i.ItemId))} disabled={added} onChange={() => toggleTick(String(i.ItemId))} />
                       <span className="truncate">{i.Name}</span>
-                      {added && <span className="text-[11px] italic">already added</span>}
+                      {added && <span className="text-11 italic">already added</span>}
                     </label>
                   );
                 })}
@@ -477,16 +477,16 @@ export default function PurchaseOrder() {
             <div className="grid grid-cols-2 gap-1 rounded-xl bg-ink-100 p-1">
               <button
                 type="button" onClick={() => setPoTab('new')}
-                className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'new' ? (draftEditing ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-brand-700 shadow-sm') : 'text-ink-500'}`}
+                className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-13 font-semibold transition-colors ${poTab === 'new' ? (draftEditing ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-brand-700 shadow-sm') : 'text-ink-500'}`}
               >
                 {draftEditing ? <Pencil size={14} /> : <Plus size={14} />} {draftEditing ? 'Edit Item' : 'New Item'}
               </button>
               <button
                 type="button" onClick={() => setPoTab('items')}
-                className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'items' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500'}`}
+                className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-13 font-semibold transition-colors ${poTab === 'items' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500'}`}
               >
                 <List size={14} /> Order Items
-                <span className={`rounded-full px-1.5 text-[11px] ${filled.length ? 'bg-brand-600 text-white' : 'bg-ink-200 text-ink-500'}`}>{filled.length}</span>
+                <span className={`rounded-full px-1.5 text-11 ${filled.length ? 'bg-brand-600 text-white' : 'bg-ink-200 text-ink-500'}`}>{filled.length}</span>
               </button>
             </div>
 
@@ -503,9 +503,9 @@ export default function PurchaseOrder() {
               // GST % · CGST % · SGST % · GST Amt · Total. Boxes are editable; the shaded ones are shown only.
               const fit = (v) => {
                 const n = String(v ?? '').length;
-                return n >= 9 ? '!text-[9px] tracking-tighter' : n >= 7 ? '!text-[10.5px] tracking-tight' : '!text-[12px]';
+                return n >= 9 ? '!text-9 tracking-tighter' : n >= 7 ? '!text-10.5 tracking-tight' : '!text-12';
               };
-              const head = (label) => <span className="mb-0.5 block truncate text-center text-[10px] font-semibold text-ink-500">{label}</span>;
+              const head = (label) => <span className="mb-0.5 block truncate text-center text-10 font-semibold text-ink-500">{label}</span>;
               const num = (label, key, { onChange, className = '' } = {}) => (
                 <label className="block min-w-0">
                   {head(label)}
@@ -524,7 +524,7 @@ export default function PurchaseOrder() {
               return (
                 <div ref={draftRef} className={`scroll-mt-16 overflow-hidden rounded-xl border bg-white shadow-sm ${draftEditing ? 'border-amber-300' : 'border-brand-200'}`}>
                   <div className={`flex items-center gap-2 border-b px-2.5 py-2 ${draftEditing ? 'border-amber-100 bg-amber-50' : 'border-ink-100 bg-brand-50/60'}`}>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white ${draftEditing ? 'bg-amber-500' : 'bg-brand-600'}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-10 font-bold uppercase text-white ${draftEditing ? 'bg-amber-500' : 'bg-brand-600'}`}>
                       {draftEditing ? `Edit #${lines.findIndex((x) => x.key === l.key) + 1}` : 'New item'}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -553,7 +553,7 @@ export default function PurchaseOrder() {
                         {show('GST Amt', money(c.gstAmount))}
                         {show('Total', money(c.total), '!bg-brand-50 font-bold text-brand-800')}
                       </div>
-                      {bad && <p className="rounded-md bg-red-50 px-2 py-1 text-[12px] text-red-600">{bad}</p>}
+                      {bad && <p className="rounded-md bg-red-50 px-2 py-1 text-12 text-red-600">{bad}</p>}
                       <div className="flex gap-2">
                         {draftEditing && (
                           <button type="button" className="btn-secondary flex-1" onClick={() => setDraft(emptyLine())}><X size={16} /> Cancel</button>
@@ -564,7 +564,7 @@ export default function PurchaseOrder() {
                       </div>
                     </div>
                   ) : (
-                    <p className="px-3 py-2.5 text-[12px] text-ink-400">Search and pick an item, fill in its rate and quantity, then tap <span className="font-semibold text-brand-700">Add to list</span>.</p>
+                    <p className="px-3 py-2.5 text-12 text-ink-400">Search and pick an item, fill in its rate and quantity, then tap <span className="font-semibold text-brand-700">Add to list</span>.</p>
                   )}
                 </div>
               );
@@ -573,7 +573,7 @@ export default function PurchaseOrder() {
 
             <div className={`overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm ${poTab === 'items' ? '' : 'hidden'}`}>
               {filled.length === 0 && (
-                <p className="px-3 py-5 text-center text-[12px] text-ink-400">
+                <p className="px-3 py-5 text-center text-12 text-ink-400">
                   No items yet — add them on the <button type="button" className="font-semibold text-brand-700" onClick={() => setPoTab('new')}>New Item</button> tab.
                 </p>
               )}
@@ -584,17 +584,17 @@ export default function PurchaseOrder() {
                 const active = draftEditing && draft.key === l.key;
                 return (
                   <div key={l.key} className={`flex items-start gap-2 border-t border-ink-100 px-3 py-2 first:border-t-0 ${active ? 'bg-amber-50' : bad ? 'bg-red-50' : ''}`}>
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-600">{i + 1}</span>
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-10 font-bold text-ink-600">{i + 1}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="break-words text-[13px] font-medium leading-snug text-ink-800">{itemById.get(l.itemId)?.Name || 'Item'}</p>
-                      <p className="text-[11px] leading-snug text-ink-500">
+                      <p className="break-words text-13 font-medium leading-snug text-ink-800">{itemById.get(l.itemId)?.Name || 'Item'}</p>
+                      <p className="text-11 leading-snug text-ink-500">
                         Qty {Number(l.qty) || 0}{Number(l.free) ? ` + ${Number(l.free)} free` : ''} × ₹{money(l.pRate)}
                         {Number(l.disc) ? ` · Disc ${Number(l.disc)}%` : ''} · GST {gst}%
                       </p>
-                      {bad && <p className="text-[11px] text-red-600">{bad}</p>}
+                      {bad && <p className="text-11 text-red-600">{bad}</p>}
                     </div>
                     <div className="flex shrink-0 flex-col items-end">
-                      <span className="text-[13px] font-bold tabular-nums text-brand-800">₹{money(c.total)}</span>
+                      <span className="text-13 font-bold tabular-nums text-brand-800">₹{money(c.total)}</span>
                       <div className="mt-0.5 flex gap-1">
                         <button type="button" className="rounded-lg border border-brand-100 p-1 text-brand-600 hover:bg-brand-50" title="Edit" onClick={() => editLine(l)}><Pencil size={14} /></button>
                         <button type="button" className="rounded-lg border border-red-100 p-1 text-red-500 hover:bg-red-50" title="Delete" onClick={() => deleteLine(l)}><Trash2 size={14} /></button>
@@ -608,7 +608,7 @@ export default function PurchaseOrder() {
             </div>
 
             <div className="shrink-0 rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
-              <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[13px]">
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-13">
                 <span className="text-ink-600">Sum of Total <b className="tabular-nums text-ink-900">{money(total)}</b></span>
                 <label className="inline-flex items-center gap-1.5 text-ink-600">
                   <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
@@ -616,8 +616,8 @@ export default function PurchaseOrder() {
                 </label>
               </div>
               <div className="flex items-center justify-between rounded-b-xl bg-brand-600 px-3 py-1 text-white">
-                <span className="text-[13px] font-semibold">Net Amount</span>
-                <span className="text-[15px] font-bold tabular-nums">₹{money(netAmount)}</span>
+                <span className="text-13 font-semibold">Net Amount</span>
+                <span className="text-15 font-bold tabular-nums">₹{money(netAmount)}</span>
               </div>
             </div>
           </div>
@@ -625,9 +625,9 @@ export default function PurchaseOrder() {
           <div className="mt-2 hidden overflow-x-auto md:block">
             {/* Fixed layout: each column has a share of the width, so the table fits the
                 screen without scrolling; opening the optional columns lets it scroll. */}
-            <table className={`w-full table-fixed border-collapse text-left text-[12px] `} {...gridKeys}>
+            <table className={`w-full table-fixed border-collapse text-left text-12 `} {...gridKeys}>
               <thead>
-                <tr className="bg-brand-50 text-[11px] font-bold leading-tight text-brand-700">
+                <tr className="bg-brand-50 text-11 font-bold leading-tight text-brand-700">
                   <th className={`${hd} w-[2.5%]`}>#</th>
                   <th className={`${hd} w-[17%] !text-left`}>
                     <div className="flex items-center justify-between">
@@ -670,7 +670,7 @@ export default function PurchaseOrder() {
                       <td className={`${cell} text-center text-ink-400`}>{r + 1}</td>
                       <td className={cell}>
                         <SearchPick className={box} data-r={r} data-c={0} placeholder="Search item..." options={itemOptions} value={l.itemId} onChange={(v) => pickItem(l.key, v)} actions={itemActions(l.key)} />
-                        {bad && <p className="px-1.5 text-[11px] text-red-600">{bad}</p>}
+                        {bad && <p className="px-1.5 text-11 text-red-600">{bad}</p>}
                       </td>
                       {showOptional && [l.generic, l.manufacturer, l.hsn].map((v, i) => <td key={i} className={`${cell} ${opt} px-1.5`}>{v}</td>)}
                       <td className={`${cell} px-1.5`}>{l.category}</td>
@@ -721,7 +721,7 @@ export default function PurchaseOrder() {
                 </tr>
                 <tr className="bg-brand-50 font-bold">
                   <td className={`${cell} px-2 text-right text-brand-800`} colSpan={16 + optCols}>Net Amount</td>
-                  <td className={`${cell} px-1.5 text-right text-[13px] text-brand-800`}>{money(netAmount)}</td>
+                  <td className={`${cell} px-1.5 text-right text-13 text-brand-800`}>{money(netAmount)}</td>
                   <td className={cell} />
                 </tr>
               </tfoot>

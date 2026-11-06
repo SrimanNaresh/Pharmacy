@@ -174,7 +174,7 @@ export default function StockAdjustment() {
   };
 
   const cell = 'border border-ink-200 px-1 py-0.5';
-  const box = 'w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[13px] focus:border-brand-400 focus:bg-white focus:outline-none';
+  const box = 'w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-13 focus:border-brand-400 focus:bg-white focus:outline-none';
   const num = `${box} no-spin text-right`;
 
   return (
@@ -214,7 +214,7 @@ export default function StockAdjustment() {
                 return (
                   <div ref={formRef} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${curEditing ? 'border-amber-300' : 'border-brand-200'}`}>
                     <div className={`flex items-center gap-2 border-b px-2.5 py-2 ${curEditing ? 'border-amber-100 bg-amber-50' : 'border-ink-100 bg-brand-50/60'}`}>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white ${curEditing ? 'bg-amber-500' : 'bg-brand-600'}`}>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-10 font-bold uppercase text-white ${curEditing ? 'bg-amber-500' : 'bg-brand-600'}`}>
                         {curEditing ? `Edit #${listed.indexOf(r) + 1}` : 'New item'}
                       </span>
                       <div className="min-w-0 flex-1">
@@ -250,7 +250,7 @@ export default function StockAdjustment() {
                             <input type="number" inputMode="decimal" min="0" step="any" disabled={outOn} className={`${cardBox} no-spin !border-red-200`} value={r.outPrice} onChange={(e) => setRow(r.key, { outPrice: e.target.value })} />
                           </CardField>
                         </div>
-                        {p && <p className="rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-600">{p}</p>}
+                        {p && <p className="rounded-md bg-red-50 px-2 py-1 text-11 text-red-600">{p}</p>}
                         <div className="flex gap-2">
                           {curEditing && <button type="button" className="btn-secondary flex-1" onClick={clearCur}><X size={16} /> Cancel</button>}
                           <button type="button" className="btn-primary flex-[2]" onClick={addCur}>
@@ -259,7 +259,7 @@ export default function StockAdjustment() {
                         </div>
                       </div>
                     ) : (
-                      <p className="px-3 py-2.5 text-[12px] text-ink-400">Search and pick an item, enter Adjust In or Adjust Out, then tap <span className="font-semibold text-brand-700">Add to list</span>.</p>
+                      <p className="px-3 py-2.5 text-12 text-ink-400">Search and pick an item, enter Adjust In or Adjust Out, then tap <span className="font-semibold text-brand-700">Add to list</span>.</p>
                     )}
                   </div>
                 );
@@ -268,7 +268,7 @@ export default function StockAdjustment() {
               {adjTab === 'list' && (
                 <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
                   {listed.length === 0 && (
-                    <p className="px-3 py-5 text-center text-[12px] text-ink-400">
+                    <p className="px-3 py-5 text-center text-12 text-ink-400">
                       No items yet — add them on the <button type="button" className="font-semibold text-brand-700" onClick={() => setAdjTab('new')}>New Item</button> tab.
                     </p>
                   )}
@@ -278,16 +278,16 @@ export default function StockAdjustment() {
                     const outQ = Number(r.outQty) || 0;
                     return (
                       <div key={r.key} className={`flex items-start gap-2 border-t border-ink-100 px-3 py-2 first:border-t-0 ${curEditing && r.key === cur.key ? 'bg-amber-50' : p ? 'bg-red-50' : ''}`}>
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-600">{i + 1}</span>
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-10 font-bold text-ink-600">{i + 1}</span>
                         <div className="min-w-0 flex-1">
-                          <p className="break-words text-[13px] font-medium leading-snug text-ink-800">{itemOptions.find((o) => o.value === r.itemId)?.label || 'Item'}</p>
-                          <p className="text-[11px] leading-snug text-ink-500">Batch {r.batch || '-'} · Stock {round2(curOf(r))}</p>
-                          {p && <p className="text-[11px] text-red-600">{p}</p>}
+                          <p className="break-words text-13 font-medium leading-snug text-ink-800">{itemOptions.find((o) => o.value === r.itemId)?.label || 'Item'}</p>
+                          <p className="text-11 leading-snug text-ink-500">Batch {r.batch || '-'} · Stock {round2(curOf(r))}</p>
+                          {p && <p className="text-11 text-red-600">{p}</p>}
                         </div>
                         <div className="flex shrink-0 flex-col items-end">
-                          {inQ > 0 && <span className="text-[13px] font-bold tabular-nums text-emerald-700">+{inQ} @ ₹{money(r.inPrice)}</span>}
-                          {outQ > 0 && <span className="text-[13px] font-bold tabular-nums text-red-600">−{outQ} @ ₹{money(r.outPrice)}</span>}
-                          {!inQ && !outQ && <span className="text-[12px] text-ink-400">No qty</span>}
+                          {inQ > 0 && <span className="text-13 font-bold tabular-nums text-emerald-700">+{inQ} @ ₹{money(r.inPrice)}</span>}
+                          {outQ > 0 && <span className="text-13 font-bold tabular-nums text-red-600">−{outQ} @ ₹{money(r.outPrice)}</span>}
+                          {!inQ && !outQ && <span className="text-12 text-ink-400">No qty</span>}
                           <div className="mt-0.5 flex gap-1">
                             <button type="button" className="rounded-lg border border-brand-100 p-1 text-brand-600 hover:bg-brand-50" title="Edit" onClick={() => editRow(r)}><Pencil size={14} /></button>
                             <button type="button" className="rounded-lg border border-red-100 p-1 text-red-500 hover:bg-red-50" title="Delete" onClick={() => deleteRow(r)}><Trash2 size={14} /></button>
@@ -300,14 +300,14 @@ export default function StockAdjustment() {
               )}
             </div>
 
-            <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-xl border border-ink-200 text-[13px] shadow-sm">
+            <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-xl border border-ink-200 text-13 shadow-sm">
               <div className="flex items-center justify-between bg-emerald-50 px-3 py-1.5"><span className="text-emerald-700">In</span><b className="tabular-nums text-emerald-800">₹{money(inTotal)}</b></div>
               <div className="flex items-center justify-between border-l border-ink-200 bg-red-50 px-3 py-1.5"><span className="text-red-700">Out</span><b className="tabular-nums text-red-700">₹{money(outTotal)}</b></div>
             </div>
           </div>
 
           <div className="mt-3 hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[880px] border-collapse text-left text-[13px]" {...gridKeys}>
+            <table className="w-full min-w-[880px] border-collapse text-left text-13" {...gridKeys}>
               <thead>
                 <tr className="bg-brand-50 font-bold text-brand-700">
                   <th className={`${cell} w-8 px-1.5 text-center`}>#</th>
@@ -332,7 +332,7 @@ export default function StockAdjustment() {
                       <td className={`${cell} px-1.5 text-center text-ink-400`}>{i + 1}</td>
                       <td className={cell}>
                         <SearchPick className={box} placeholder="Search item..." options={itemOptions} value={r.itemId} data-r={i} data-c={0} onChange={(v) => pickItem(r.key, v)} />
-                        {p && <p className="px-1 text-[11px] text-red-600">{p}</p>}
+                        {p && <p className="px-1 text-11 text-red-600">{p}</p>}
                       </td>
                       <td className={cell}>
                         <input
@@ -342,7 +342,7 @@ export default function StockAdjustment() {
                         <datalist id={listId}>
                           {r.batches.filter((b) => b.Batch).map((b) => <option key={b.Batch} value={b.Batch}>{`Stock ${round2(b.CurStock)}`}</option>)}
                         </datalist>
-                        {isNew && r.batch && <p className="px-1 text-[11px] text-emerald-700">New batch</p>}
+                        {isNew && r.batch && <p className="px-1 text-11 text-emerald-700">New batch</p>}
                       </td>
                       <td className={`${cell} px-1.5 text-right font-medium text-ink-700`}>{r.itemId ? round2(curOf(r)) : ''}</td>
                       <td className={cell}>

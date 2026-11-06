@@ -44,7 +44,7 @@ const sum = (lines) => lines.reduce((t, l) => {
 const Amt = ({ pair }) => (
   <>
     <div>{money(pair[0])}</div>
-    <div className="text-[11px] text-ink-400">₹{money(pair[1])} / 1</div>
+    <div className="text-11 text-ink-400">₹{money(pair[1])} / 1</div>
   </>
 );
 
@@ -140,7 +140,7 @@ export default function StockInList() {
       <>
         <td className={`${cell} ${r}`}>
           {a.qty}
-          {a.free > 0 && <div className="text-[11px] text-ink-400">incl. {a.free} free</div>}
+          {a.free > 0 && <div className="text-11 text-ink-400">incl. {a.free} free</div>}
         </td>
         {[a.buy, a.sale, a.disc, a.net].map((p, i) => <td key={i} className={`${cell} ${r}`}><Amt pair={p} /></td>)}
       </>
@@ -175,7 +175,7 @@ export default function StockInList() {
             <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {[['Quantity', total.qty, false], ['Buy Amount', total.buy, true], ['Sale Amount', total.sale, true], ['Discount Amount', total.disc, true], ['Net Sale Amount', total.net, true]].map(([label, v, isMoney]) => (
                 <div key={label} className="rounded-lg border border-ink-100 bg-ink-50/60 px-3 py-1.5">
-                  <p className="text-[11px] text-ink-400">{label}</p>
+                  <p className="text-11 text-ink-400">{label}</p>
                   <p className="text-sm font-semibold text-ink-800">{isMoney ? `₹${money(v)}` : v}</p>
                 </div>
               ))}
@@ -183,7 +183,7 @@ export default function StockInList() {
 
             {/* The first column (item / Stock In No) stays on the left while the others scroll sideways. */}
             <div className="overflow-x-auto rounded-lg">
-              <table className="list-pinned w-full min-w-[960px] border-l border-t border-ink-200 text-left text-[13px]">
+              <table className="list-pinned w-full min-w-[960px] border-l border-t border-ink-200 text-left text-13">
                 <thead>
                   {tab === 'item' ? (
                     <tr className="bg-brand-50 font-bold text-brand-700">
@@ -248,7 +248,7 @@ export default function StockInList() {
                             {k === 0 && (
                               <td className={`${cell} pin align-middle`} rowSpan={ls.length}>
                                 <div className="font-semibold text-brand-700">{l.StockInNo}</div>
-                                <div className="text-[11px] text-ink-500">{l.VendorName} · {l.OrderNo}</div>
+                                <div className="text-11 text-ink-500">{l.VendorName} · {l.OrderNo}</div>
                               </td>
                             )}
                             <td className={cell}>{l.ItemName}</td>

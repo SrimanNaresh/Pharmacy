@@ -111,7 +111,7 @@ function DesktopNode({ node, pathname, onNavigate, depth }) {
   if (node.submenu) {
     return (
       <div className="px-1">
-        <p className={`${INDENT_LABEL[i]} pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-300`}>
+        <p className={`${INDENT_LABEL[i]} pb-1 pt-1.5 text-11 font-semibold uppercase tracking-wide text-ink-300`}>
           {node.label}
         </p>
         {node.submenu.map((child) => (
@@ -202,7 +202,7 @@ function ColumnLinks({ nodes, onNavigate, query }) {
   return nodes.map((child) => (child.submenu ? (
     <div key={child.label} className="mt-1.5">
       <div className="mb-0.5 flex items-center gap-1.5 px-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-400"><Highlight text={child.label} query={query} /></span>
+        <span className="text-10 font-semibold uppercase tracking-wider text-ink-400"><Highlight text={child.label} query={query} /></span>
         <span className="h-px flex-1 bg-ink-100" />
       </div>
       <ColumnLinks nodes={child.submenu} onNavigate={onNavigate} query={query} />
@@ -213,7 +213,7 @@ function ColumnLinks({ nodes, onNavigate, query }) {
       to={child.to}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `group flex items-start gap-1 rounded-md px-1.5 py-[3px] text-[13px] leading-[18px] transition-all ${
+        `group flex items-start gap-1 rounded-md px-1.5 py-[3px] text-13 leading-[18px] transition-all ${
           isActive ? 'bg-brand-50 font-semibold text-brand-700' : 'text-ink-600 hover:bg-ink-50 hover:text-brand-700'
         }`
       }
@@ -284,7 +284,7 @@ function DesktopColumnsPanel({ item, rect, panelRef, onNavigate }) {
       <div className="flex items-center gap-2 border-b border-ink-100 px-3 py-1.5">
         <GroupIcon size={13} className="text-brand-600" />
         <span className="text-xs font-semibold text-ink-700">{item.label}</span>
-        <span className="text-[11px] text-ink-400">· {q ? `${matches} match${matches === 1 ? '' : 'es'}` : `${parts.length} sections`}</span>
+        <span className="text-11 text-ink-400">· {q ? `${matches} match${matches === 1 ? '' : 'es'}` : `${parts.length} sections`}</span>
         <div className="relative ml-auto w-56">
           <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-400" />
           <input
@@ -321,7 +321,7 @@ function DesktopColumnsPanel({ item, rect, panelRef, onNavigate }) {
                   <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-white shadow-sm ${accent.chip}`}>
                     <Icon size={13} strokeWidth={2.25} />
                   </span>
-                  <span className="min-w-0 text-[13px] font-semibold leading-tight text-ink-800"><Highlight text={part.label} query={q} /></span>
+                  <span className="min-w-0 text-13 font-semibold leading-tight text-ink-800"><Highlight text={part.label} query={q} /></span>
                 </div>
                 <ColumnLinks nodes={part.submenu} onNavigate={onNavigate} query={q} />
               </div>
@@ -364,7 +364,7 @@ function MobileNode({ node, pathname, onNavigate, depth }) {
         to={node.to}
         onClick={onNavigate}
         className={({ isActive }) =>
-          `relative block rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+          `relative block rounded-lg px-3 py-1.5 text-13 transition-colors ${
             isActive ? 'bg-white/10 font-semibold text-white' : 'text-white/60 hover:bg-white/5 hover:text-white/90'
           }`
         }
@@ -387,7 +387,7 @@ function MobileNode({ node, pathname, onNavigate, depth }) {
     <div>
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-13 font-medium transition-colors ${
           active ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white/90'
         }`}
       >
@@ -539,7 +539,7 @@ export function SideNav() {
             onKeyDown={onKeyDown}
             placeholder="Search menu..."
             aria-label="Search menu"
-            className="w-full rounded-lg border border-white/15 bg-white/10 py-1.5 pl-8 pr-7 text-[13px] text-white placeholder-white/40 outline-none transition-colors focus:border-teal-300/60 focus:bg-white/15"
+            className="w-full rounded-lg border border-white/15 bg-white/10 py-1.5 pl-8 pr-7 text-13 text-white placeholder-white/40 outline-none transition-colors focus:border-teal-300/60 focus:bg-white/15"
           />
           {query && (
             <button onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-white/50 hover:text-white">
@@ -550,7 +550,7 @@ export function SideNav() {
       </div>
       {q ? (
         <nav className="space-y-0.5 px-2 py-1">
-          {results.length === 0 && <p className="px-3 py-2 text-[13px] text-white/50">No matching pages.</p>}
+          {results.length === 0 && <p className="px-3 py-2 text-13 text-white/50">No matching pages.</p>}
           {results.map((r, i) => {
             const Icon = r.icon;
             const current = pathname === r.to;
@@ -559,7 +559,7 @@ export function SideNav() {
                 key={r.to}
                 onClick={() => open(r.to)}
                 onMouseEnter={() => setPick(i)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-13 transition-colors ${
                   i === pick ? 'bg-white/15 text-white' : 'text-white/70 hover:text-white'
                 } ${current ? 'font-semibold' : ''}`}
               >

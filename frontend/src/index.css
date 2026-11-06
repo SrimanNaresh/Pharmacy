@@ -6,10 +6,25 @@
   html, body, #root {
     height: 100%;
   }
-  /* Scale the whole app: all Tailwind rem-based sizes grow proportionally.
-     16px is the browser default; 18px makes the entire UI ~12.5% larger. */
+  /* The root size scales the whole app: every text size (text-sm, text-13 ...)
+     and rem spacing follows it, so text suits the screen it is read on.
+     Phones 17–18px with the width; tablets and small laptops 17px so the
+     wide tables still fit; laptops 18px (the size the screens are drawn at);
+     large and full-HD desktops 19px and 20px. */
   html {
-    font-size: 18px;
+    font-size: clamp(17px, 4.6vw, 18px);
+  }
+  @media (min-width: 768px) {
+    html { font-size: 17px; }
+  }
+  @media (min-width: 1280px) {
+    html { font-size: 18px; }
+  }
+  @media (min-width: 1536px) {
+    html { font-size: 19px; }
+  }
+  @media (min-width: 1920px) {
+    html { font-size: 20px; }
   }
   body {
     @apply bg-ink-50 text-ink-800 antialiased;
@@ -54,7 +69,7 @@
      textareas still grow; selects and date boxes ignore line height, so the
      minimum is what lines them up with the text boxes. */
   .input {
-    @apply min-h-[30px] w-full rounded-lg border border-ink-200 bg-white px-2.5 py-[3px] text-[13px] leading-[22px] text-ink-800 shadow-sm transition-colors placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100/70;
+    @apply min-h-[30px] w-full rounded-lg border border-ink-200 bg-white px-2.5 py-[3px] text-13 leading-[22px] text-ink-800 shadow-sm transition-colors placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100/70;
   }
   .label {
     @apply mb-0.5 block text-xs font-medium text-ink-600;

@@ -145,7 +145,7 @@ export default function ItemBulkUpdate() {
     setErrors({});
   };
 
-  const cellBox = 'w-full rounded border bg-transparent px-1.5 py-0.5 text-[13px] focus:bg-white focus:outline-none';
+  const cellBox = 'w-full rounded border bg-transparent px-1.5 py-0.5 text-13 focus:bg-white focus:outline-none';
   const cell = 'border border-ink-200 px-1 py-0.5';
 
   const editor = (r, c, rIdx, cIdx) => {
@@ -223,7 +223,7 @@ export default function ItemBulkUpdate() {
               <button type="button" className="rounded p-0.5 text-red-500 hover:bg-red-100" onClick={() => setUploadErrors(null)} aria-label="Close"><X size={16} /></button>
             </div>
             <div className="max-h-48 overflow-y-auto rounded border border-red-100 bg-white">
-              <table className="w-full text-left text-[13px]">
+              <table className="w-full text-left text-13">
                 <thead className="sticky top-0 bg-red-100/70 text-red-800">
                   <tr><th className="w-20 px-2 py-1 text-center">Excel row</th><th className="px-2 py-1">Item Name</th><th className="px-2 py-1">Problem</th></tr>
                 </thead>
@@ -250,7 +250,7 @@ export default function ItemBulkUpdate() {
         ) : (
           <>
             <div className="max-h-[70vh] overflow-auto rounded-lg border border-ink-200">
-              <table className="w-max min-w-full border-collapse text-left text-[13px]" {...gridKeys}>
+              <table className="w-max min-w-full border-collapse text-left text-13" {...gridKeys}>
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-brand-50 font-bold text-brand-700">
                     <th className={`${cell} sticky left-0 z-30 w-[88px] min-w-[88px] bg-brand-50 px-2`}>Item Code</th>
@@ -270,7 +270,7 @@ export default function ItemBulkUpdate() {
                         <td className={`${cell} sticky left-0 z-10 px-2 text-ink-500 ${pinTint}`}>{r.ItemCode}</td>
                         <td className={`${cell} sticky left-[88px] z-10 px-2 font-medium ${pinTint} ${err ? 'text-red-700' : 'text-ink-800'}`} title={err || ''}>
                           {r.Name}
-                          {err && <p className="text-[11px] font-normal text-red-600">{err}</p>}
+                          {err && <p className="text-11 font-normal text-red-600">{err}</p>}
                         </td>
                         {COLS.map((c, cIdx) => <td key={c.key} className={`${cell} ${c.w}`}>{editor(r, c, rIdx, cIdx)}</td>)}
                       </tr>
