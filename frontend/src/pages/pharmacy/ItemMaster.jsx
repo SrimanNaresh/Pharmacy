@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Package, Save, X, List } from 'lucide-react';
+import { Package, Save, X, List, ScanLine } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import { useToast } from '../../hooks/useToast.js';
 import { itemMasterApi } from '../../api/client.js';
 import { MAX_GST, emptyForm, rowToForm, validate, ItemFields } from './ItemForm.jsx';
 import { usePickLists } from './usePickLists.js';
+import ScanBillModal from './ScanBillModal.jsx';
 
 // Pharmacy > Item > Master: add or edit an item. Stock comes from Stock In and
 // Stock Adjustment; on Edit the current stock is shown read-only.
@@ -17,6 +18,7 @@ export default function ItemMaster() {
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null); // { id, code, stock } while editing
   const [saving, setSaving] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   useEffect(() => {
     const id = location.state?.editItemId;
@@ -61,9 +63,16 @@ export default function ItemMaster() {
             title={editing ? `Edit Item · ${editing.code}` : 'Item Master'}
             subtitle={editing ? 'Update this item' : 'Add a new item — the code is given on save'}
             actions={
-              <button type="button" className="btn-secondary" onClick={() => toList()}>
-                <List size={16} /> Item List
-              </button>
+              <>
+                {!editing && (
+                  <button type="button" className="btn-secondary" onClick={() => setScanOpen(true)} title="Read a supplier's bill and add its new items">
+                    <ScanLine size={16} /> Scan Bill
+                  </button>
+                )}
+                <button type="button" className="btn-secondary" onClick={() => toList()}>
+                  <List size={16} /> Item List
+                </button>
+              </>
             }
           />
 
@@ -85,6 +94,7 @@ export default function ItemMaster() {
           </div>
         </form>
       </div>
+      <ScanBillModal open={scanOpen} onClose={() => setScanOpen(false)} onAdded={(n) => show(`${n} item${n === 1 ? '' : 's'} added from the bill`, 'success')} />
       <Toast toast={toast} />
     </div>
   );

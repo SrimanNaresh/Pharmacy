@@ -12,9 +12,11 @@
     "axios": "^1.7.7",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.451.0",
+    "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
+    "react-router-dom": "^6.26.2",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
