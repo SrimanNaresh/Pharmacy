@@ -6,28 +6,56 @@ import {
 import { Modal } from '../../components/ui.jsx';
 import { itemMasterApi } from '../../api/client.js';
 import { emptyForm } from './ItemForm.jsx';
-import { buildIndex, compact, extractItems, matchName } from '../../utils/billScan.js';
+import { BILL_FIELDS, buildIndex, compact, extractBillHeader, extractBillRows, extractItems, matchName } from '../../utils/billScan.js';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 
 // Item Master > Scan Bill: add a supplier bill's new items to Item Master.
 //  1. Upload a photo / PDF of the bill (or take a photo on a phone).
 //  2. The bill is shown, turned upright; drag a box around the Item
-//     Description column and only that part is read (OCR, in the browser).
-//  3. The names found are listed in tabs:
+//     Description column (or the item table) and only that part is read (OCR,
+//     in the browser). Item Master saves only the item names.
+//     For a Purchase Order (forOrder) the box covers the item table, header
+//     row included, and the bill's columns fill the item's fields:
+//       Item Description -> Item Name, HSNCODE -> HSN, Rack -> Rack,
+//       MFR -> Manufacturer, Batch -> Category, Pack -> Pack, MRP -> MRP
+//     (Qty isn't read: stock comes from Stock In.) A box around just the
+//     Item Description column, with no header, reads the names only.
+//  3. The items found are listed in tabs:
 //     - New items: will be added (Add button at the end of the list)
 //     - Similar: close to an existing item and matched to it — pick
 //       "Add as a new item" in its dropdown if it's really a different item
 //     - Already exists: the same name is in Item Master — skipped
-// Each tab is a grid like the Purchase Order item grid. Only the item name is
-// saved here; fill in the rest (pack, MRP, GST...) from the Item List.
+// Each tab is a grid like the Purchase Order item grid. A Manufacturer or
+// Category that isn't on its pick-list yet is added to it on save.
+//
+// forOrder (Purchase Order > Scan Bill): the bill's qty column is read too,
+// and the last button adds the new items to Item Master and then puts every
+// bill item on the order — new ones, matched ones and existing ones — with
+// the bill's Qty and MRP, through onLines([{ itemId, qty, mrp }]).
 
 let nextId = 1;
-const newRow = (name) => ({ id: nextId++, name, include: true, choice: null, result: null });
+const blankFields = { hsnCode: '', rack: '', manufacturer: '', category: '', pack: '', mrp: '', qty: '' };
+const newRow = (fields) => ({ id: nextId++, ...blankFields, ...fields, include: true, choice: null, result: null });
+// The grid's bill columns after Item Name: [field, heading, width class, max length]
+const COLS = [
+  ['hsnCode', 'HSN', 'w-[11%]', 30],
+  ['rack', 'Rack', 'w-[8%]', 50],
+  ['manufacturer', 'Manufacturer', 'w-[13%]', 200],
+  ['category', 'Category (Batch)', 'w-[12%]', 100],
+  ['pack', 'Pack', 'w-[8%]', 50],
+  ['mrp', 'MRP', 'w-[9%]', null],
+];
+const BILL_HEADING = {
+  name: 'Item Description', hsnCode: 'HSNCODE', rack: 'Rack', manufacturer: 'MFR', category: 'Batch', pack: 'Pack', mrp: 'MRP', qty: 'qty',
+};
+const QTY_COL = ['qty', 'Qty', 'w-[7%]', null];
 const NEW = 'new';
 const code = (it) => it.ItemCode || `ITM${String(it.ItemId).padStart(6, '0')}`;
 const MIN_BOX = 0.02; // a selection smaller than this (share of the page) is a slip, not a box
 
-export default function ScanBillModal({ open, onClose, onAdded }) {
+export default function ScanBillModal({ open, onClose, onAdded, forOrder = false, onLines }) {
+  // Item Master's scan reads names only; a Purchase Order's also reads the bill's columns.
+  const cols = forOrder ? [...COLS, QTY_COL] : [];
   const [items, setItems] = useState([]);
   // Matching needs the item list: until it's loaded nothing can be read or
   // added, or every line would look new.
@@ -46,6 +74,9 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [summary, setSummary] = useState('');
+  // For an order: the supplier and bill date read from the top of page 1
+  // ({ vendorName, address, mobile, gstNo, email, billDate }), or null.
+  const [supplier, setSupplier] = useState(null);
   const photoRef = useRef(null);
   const fileRef = useRef(null);
   const ocrRef = useRef(null); // Tesseract reader, made on first use
@@ -54,7 +85,7 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
 
   const reset = () => {
     setStep('pick'); setFileName(''); setPages([]); setPageNo(0); setBox(null); setZoom(1); setMoving(false); setRows([]); setTab('new');
-    setRawText(''); setError(''); setSummary(''); setBusy(null);
+    setRawText(''); setError(''); setSummary(''); setBusy(null); setSupplier(null);
   };
 
   useEffect(() => {
@@ -118,7 +149,7 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
   const remove = (id) => setRows((rs) => rs.filter((r) => r.id !== id));
   const addAfter = (id) => setRows((rs) => {
     const i = rs.findIndex((r) => r.id === id);
-    return [...rs.slice(0, i + 1), newRow(''), ...rs.slice(i + 1)];
+    return [...rs.slice(0, i + 1), newRow({ name: '' }), ...rs.slice(i + 1)];
   });
 
   // 1. A bill was chosen: show it, turned upright.
@@ -158,22 +189,41 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
     setError(''); setSummary('');
     try {
       const ocr = await getOcr();
-      setBusy({ stage: whole ? 'Reading the whole page' : 'Reading the selected column', percent: 0 });
+      setBusy({ stage: whole ? 'Reading the whole page' : 'Reading the selected area', percent: 0 });
       const { text, layout } = await ocr.read(pages[pageNo], whole ? null : box, (percent) => setBusy((b) => (b ? { ...b, percent } : b)));
+      // For an order, once per bill: the supplier's name, address and the
+      // bill date, from the top of the first page (above the item table).
+      if (forOrder && !supplier) {
+        setBusy({ stage: 'Reading the supplier and bill date', percent: 0 });
+        try {
+          const top = await ocr.read(pages[0], { x: 0, y: 0, w: 1, h: 0.4 }, (percent) => setBusy((b) => (b ? { ...b, percent } : b)));
+          setSupplier(extractBillHeader(top.layout));
+        } catch {
+          setSupplier({ vendorName: '', address: '', mobile: '', gstNo: '', email: '', billDate: '' });
+        }
+      }
       setRawText((t) => (t ? `${t}\n\n` : '') + text.trim());
-      const found = extractItems(text, layout, { column: !whole });
+      // With the header row in the area every column is read; without it,
+      // just the item names.
+      const table = extractBillRows(layout);
+      const found = table?.rows.length ? table.rows : extractItems(text, layout, { column: !whole }).map((f) => ({ name: f.name, pack: f.pack }));
       if (!found.length) {
         setError(whole
-          ? 'No item lines were found on this page. Select just the Item Description column instead.'
-          : 'No item names were read from the selected part. Make the box cover the item names from the first row to the last.');
+          ? 'No item lines were found on this page. Drag a box around the item table, header row included.'
+          : 'No items were read from the selected part. Make the box cover the item table from its header row (Rack, MFR, Item Description...) to the last item.');
         return;
       }
       const have = new Set(rows.map((r) => compact(r.name)));
-      const added = found.filter((f) => !have.has(compact(f.name))).map((f) => newRow(f.name));
+      const added = found.filter((f) => !have.has(compact(f.name))).map((f) => newRow(f));
       setRows((rs) => [...rs, ...added]);
       setTab('new');
       setStep('review');
-      if (rows.length) setSummary(`${added.length} more line${added.length === 1 ? '' : 's'} read from the bill`);
+      const missing = table?.rows.length ? BILL_FIELDS.filter((f) => !table.fields.includes(f)).map((f) => BILL_HEADING[f]) : null;
+      const what = !forOrder ? '' : !missing
+        ? 'Only item names were read (no header row in the area) — include the header row to read HSN, Rack, MFR, Batch, Pack, MRP and qty too.'
+        : missing.length ? `Columns not found on the bill: ${missing.join(', ')} — fill them in below if needed.` : '';
+      if (rows.length) setSummary(`${added.length} more line${added.length === 1 ? '' : 's'} read from the bill. ${what}`.trim());
+      else if (what) setSummary(what);
     } catch (err) {
       setError(err.message || "Couldn't read this bill");
     } finally {
@@ -185,15 +235,57 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
   const addItems = async () => {
     const todo = view.filter((v) => v.willAdd);
     for (const v of todo) {
-      if (v.name.trim().length > 200) return setError(`"${v.name.slice(0, 30)}...": Item Name must be at most 200 characters`);
+      const label = `"${v.name.slice(0, 30)}${v.name.length > 30 ? '...' : ''}"`;
+      if (v.name.trim().length > 200) return setError(`${label}: Item Name must be at most 200 characters`);
+      for (const [f, head, , max] of cols) {
+        if (max && String(v[f]).trim().length > max) return setError(`${label}: ${head} must be at most ${max} characters`);
+      }
+      if (String(v.mrp).trim() !== '' && !(Number(v.mrp) >= 0)) return setError(`${label}: MRP must be a number, 0 or more`);
+    }
+    // For an order: every bill line that goes on it (the new ones once added).
+    const forLines = forOrder ? view.filter((v) => v.include && v.status !== 'dup' && v.status !== 'empty') : [];
+    for (const v of forLines) {
+      if (String(v.qty).trim() !== '' && !(Number(v.qty) > 0)) return setError(`"${v.name.slice(0, 30)}": Qty must be more than 0`);
     }
     setSaving(true); setError(''); setSummary('');
+    // Manufacturer and Category must be on their pick-lists: add the bill's
+    // new ones (a value already there is just looked up).
+    const listed = { manufacturer: new Map(), category: new Map() };
+    const listError = {};
+    for (const f of forOrder ? Object.keys(listed) : []) {
+      const names = [...new Set(todo.map((v) => v[f].trim().toUpperCase()).filter(Boolean))];
+      for (const n of names) {
+        try {
+          listed[f].set(n, (await itemMasterApi.addListValue(f, n)).name);
+        } catch (err) {
+          listError[`${f}:${n}`] = err.response?.data?.error || `Couldn't add "${n}" to the ${f} list`;
+        }
+      }
+    }
     let ok = 0;
     let failed = 0;
+    const createdId = new Map(); // row id -> new ItemId
     for (const v of todo) {
+      const bad = ['manufacturer', 'category'].map((f) => listError[`${f}:${v[f].trim().toUpperCase()}`]).find(Boolean);
+      if (bad) {
+        update(v.id, { result: { error: bad } });
+        failed += 1;
+        continue;
+      }
       try {
-        const r = await itemMasterApi.create({ ...emptyForm, name: v.name.trim() });
-        update(v.id, { result: { added: true, code: r.ItemCode } });
+        // Item Master's scan saves the name only; fill the rest from the Item List.
+        const r = await itemMasterApi.create(!forOrder ? { ...emptyForm, name: v.name.trim() } : {
+          ...emptyForm,
+          name: v.name.trim(),
+          hsnCode: v.hsnCode.trim(),
+          rack: v.rack.trim(),
+          pack: v.pack.trim(),
+          mrp: String(v.mrp).trim(),
+          manufacturer: listed.manufacturer.get(v.manufacturer.trim().toUpperCase()) || '',
+          category: listed.category.get(v.category.trim().toUpperCase()) || '',
+        });
+        update(v.id, { result: { added: true, code: r.ItemCode, itemId: r.ItemId } });
+        createdId.set(v.id, r.ItemId);
         ok += 1;
       } catch (err) {
         update(v.id, { result: { error: err.response?.data?.error || 'Save failed' } });
@@ -202,11 +294,33 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
     }
     await loadItems().catch(() => {});
     setSaving(false);
+    if (ok) onAdded?.(ok);
+    if (forOrder) {
+      if (failed) {
+        setTab('new');
+        setSummary(`${ok} new item${ok === 1 ? '' : 's'} added to Item Master · ${failed} failed — fix the red rows (or delete them) and press the button again`);
+        return;
+      }
+      const byId = new Map(items.map((it) => [it.ItemId, it]));
+      const lines = [];
+      let inactive = 0;
+      for (const v of forLines) {
+        let itemId = createdId.get(v.id) ?? v.result?.itemId ?? null;
+        if (!itemId && v.status === 'exists') itemId = v.m.exact.ItemId;
+        if (!itemId && v.status === 'similar' && v.choice !== NEW) itemId = v.choice;
+        if (!itemId) continue;
+        if (byId.get(itemId)?.Status === 'Inactive') { inactive += 1; continue; }
+        lines.push({ itemId, qty: String(v.qty).trim(), mrp: String(v.mrp).trim() });
+      }
+      onLines?.(lines, { added: ok, inactive, supplier });
+      return;
+    }
     setSummary(`${ok} item${ok === 1 ? '' : 's'} added to Item Master${failed ? ` · ${failed} failed — see the red rows` : ''}`);
     if (!failed) setTab('exists');
-    if (ok) onAdded?.(ok);
   };
 
+  // Bill lines that go on the order: all but repeats and empty rows.
+  const orderCount = forOrder ? view.filter((v) => v.include && v.status !== 'dup' && v.status !== 'empty').length : 0;
   const working = Boolean(busy) || saving;
   const page = pages[pageNo];
   const tabRows = view.filter((v) => v.tab === tab);
@@ -225,7 +339,7 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
             <ScanLine size={28} className="text-brand-500" />
             <div className="text-sm text-ink-600">
               <p className="font-semibold text-ink-800">Upload the supplier&apos;s bill</p>
-              <p className="text-xs">A photo (JPG / PNG) or a PDF. Next you&apos;ll mark the Item Description column on it.</p>
+              <p className="text-xs">A photo (JPG / PNG) or a PDF. Next you&apos;ll mark {forOrder ? 'the item table on it, header row included' : 'the Item Description column on it'}.</p>
             </div>
             <div className="flex w-full max-w-sm gap-2">
               <button type="button" className="btn-secondary min-w-0 flex-1 whitespace-nowrap px-2 sm:hidden" disabled={!itemsReady} onClick={() => photoRef.current?.click()}>
@@ -247,7 +361,9 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-ink-600">
-                <b className="text-ink-800">Drag a box around the Item Description column</b> — from the first item name to the last. Only that part is read.
+                {forOrder
+                  ? <><b className="text-ink-800">Drag a box around the item table, header row included</b> — from the column headings (Rack, MFR, Item Description, HSNCODE, Batch, Pack, MRP, qty) to the last item. Only that part is read.</>
+                  : <><b className="text-ink-800">Drag a box around the Item Description column</b> — from the first item name to the last (or the whole item table, header row included). Only that part is read.</>}
               </p>
               <div className="flex flex-wrap items-center gap-1">
                 {pages.length > 1 && (
@@ -267,13 +383,13 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
                 {zoom > 1 && (
                   <div className="ml-1 flex overflow-hidden rounded-lg border border-ink-200 text-xs font-semibold">
                     <button type="button" className={`flex items-center gap-1 px-2 py-1 ${moving ? 'bg-brand-600 text-white' : 'text-ink-500'}`} title="Drag to move around the bill" onClick={() => setMoving(true)}><Hand size={14} /> Move</button>
-                    <button type="button" className={`flex items-center gap-1 px-2 py-1 ${!moving ? 'bg-brand-600 text-white' : 'text-ink-500'}`} title="Drag to mark the column" onClick={() => setMoving(false)}><SquareDashedMousePointer size={14} /> Select</button>
+                    <button type="button" className={`flex items-center gap-1 px-2 py-1 ${!moving ? 'bg-brand-600 text-white' : 'text-ink-500'}`} title="Drag to mark the item table" onClick={() => setMoving(false)}><SquareDashedMousePointer size={14} /> Select</button>
                   </div>
                 )}
               </div>
             </div>
 
-            <BoxSelect page={page} box={box} onBox={setBox} disabled={working} zoom={zoom} moving={moving} />
+            <BoxSelect page={page} box={box} onBox={setBox} disabled={working} zoom={zoom} moving={moving} forOrder={forOrder} />
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 pt-3">
               <div className="flex flex-wrap gap-2">
@@ -291,7 +407,7 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
                   <Sparkles size={16} /> Read Whole Page
                 </button>
                 <button type="button" className="btn-primary" disabled={working || !box} onClick={() => read(false)}>
-                  <Crop size={16} /> {box ? 'Read Selected Column' : 'Select the column first'}
+                  <Crop size={16} /> {box ? 'Read Selected Area' : forOrder ? 'Select the item table first' : 'Select the column first'}
                 </button>
               </div>
             </div>
@@ -302,7 +418,16 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
         {step === 'review' && (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="truncate text-xs text-ink-500">From <b className="text-ink-700">{fileName}</b> · {rows.length} line{rows.length === 1 ? '' : 's'} read</p>
+              <div className="min-w-0 text-xs text-ink-500">
+                <p className="truncate">From <b className="text-ink-700">{fileName}</b> · {rows.length} line{rows.length === 1 ? '' : 's'} read</p>
+                {forOrder && supplier && (
+                  <p className="truncate">
+                    Supplier: <b className="text-ink-700">{supplier.vendorName || 'not read'}</b>
+                    {supplier.billDate && <> · Bill date: <b className="text-ink-700">{supplier.billDate.split('-').reverse().join('-')}</b></>}
+                    <span className="text-ink-400"> — filled in on the order</span>
+                  </p>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button type="button" className="btn-secondary px-3 text-xs" disabled={working || !pages.length} onClick={() => { setBox(null); setSummary(''); setError(''); setStep('select'); }}>
                   <Crop size={14} /> Read More From Bill
@@ -334,14 +459,27 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
             </div>
 
             <p className="text-[11px] text-ink-500">
-              {tab === 'new' && 'These will be added to Item Master. Check the names (OCR can misread digits) and delete any row you don\'t want.'}
-              {tab === 'similar' && 'Each of these looks like an item you already have, so it is skipped. If one is really a different item, pick "Not the same — add as a new item" in its Matched to list — it moves to New Items.'}
-              {tab === 'exists' && 'Already in Item Master — skipped.'}
+              {tab === 'new' && (forOrder
+                ? 'These will be added to Item Master with the HSN, Rack, Manufacturer, Category (the bill\'s Batch), Pack and MRP read from the bill. Check them (OCR can misread digits) and delete any row you don\'t want.'
+                : 'These will be added to Item Master. Check the names (OCR can misread digits) and delete any row you don\'t want.')}
+              {tab === 'similar' && (forOrder
+                ? 'Each of these looks like an item you already have, so it goes on the order as that item. If one is really a different item, pick "Not the same — add as a new item" in its Matched to list — it moves to New Items.'
+                : 'Each of these looks like an item you already have, so it is skipped. If one is really a different item, pick "Not the same — add as a new item" in its Matched to list — it moves to New Items.')}
+              {tab === 'exists' && (forOrder ? 'Already in Item Master — these go on the order as they are (inactive items are left out).' : 'Already in Item Master — skipped.')}
             </p>
 
-            <ItemGrid tab={tab} rows={tabRows} disabled={working} update={update} remove={remove} addAfter={addAfter} />
+            <ItemGrid tab={tab} rows={tabRows} disabled={working} update={update} remove={remove} addAfter={addAfter} cols={cols} forOrder={forOrder} />
 
-            {tab === 'new' && (
+            {forOrder ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <p className="text-[11px] text-ink-500">
+                  {counts.add ? `${counts.add} new item${counts.add === 1 ? '' : 's'} will be added to Item Master first.` : 'No new items to add to Item Master.'}
+                </p>
+                <button type="button" className="btn-primary" disabled={working || !itemsReady || orderCount === 0} onClick={addItems}>
+                  <Plus size={16} /> {saving ? 'Adding...' : `Add ${orderCount} Item${orderCount === 1 ? '' : 's'} to Order`}
+                </button>
+              </div>
+            ) : tab === 'new' && (
               <div className="flex justify-end pt-1">
                 <button type="button" className="btn-primary" disabled={working || !itemsReady || counts.add === 0} onClick={addItems}>
                   <Plus size={16} /> {saving ? 'Adding...' : `Add ${counts.add} New Item${counts.add === 1 ? '' : 's'}`}
@@ -363,7 +501,7 @@ export default function ScanBillModal({ open, onClose, onAdded }) {
 }
 
 function Steps({ step }) {
-  const all = [['pick', 'Upload'], ['select', 'Select column'], ['review', 'Review & add']];
+  const all = [['pick', 'Upload'], ['select', 'Select table'], ['review', 'Review & add']];
   const at = all.findIndex(([k]) => k === step);
   return (
     <ol className="flex items-center gap-2 text-[11px] font-semibold">
@@ -399,7 +537,7 @@ function Progress({ busy }) {
 // box / onBox use shares of the picture (0..1), so they don't depend on its
 // size on screen. zoom > 1 shows it larger in a scrolling box; while `moving`,
 // a drag scrolls the bill (a finger pans) instead of drawing.
-function BoxSelect({ page, box, onBox, disabled, zoom = 1, moving = false }) {
+function BoxSelect({ page, box, onBox, disabled, zoom = 1, moving = false, forOrder = false }) {
   const url = useMemo(() => page.toDataURL('image/jpeg', 0.85), [page]);
   const wrap = useRef(null);
   const start = useRef(null);
@@ -452,7 +590,7 @@ function BoxSelect({ page, box, onBox, disabled, zoom = 1, moving = false }) {
         )}
         {!shown && (
           <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-            <span className="rounded-full bg-ink-900/75 px-3 py-1 text-[11px] font-medium text-white">Drag over the Item Description column</span>
+            <span className="rounded-full bg-ink-900/75 px-3 py-1 text-[11px] font-medium text-white">{forOrder ? 'Drag over the item table, header row included' : 'Drag over the Item Description column'}</span>
           </div>
         )}
       </div>
@@ -461,27 +599,48 @@ function BoxSelect({ page, box, onBox, disabled, zoom = 1, moving = false }) {
 }
 
 // The tab's rows as a grid, styled like the Purchase Order item grid.
-//  - New Items:        #  | Item Name (editable)       | + / delete
+//  - New Items:        #  | Item Name | HSN | Rack | Manufacturer | Category (Batch) | Pack | MRP (all editable) | + / delete
 //  - Similar · Matched: # | Name on Bill               | Matched to (dropdown, or "Add as a new item")
 //  - Already Exists:   #  | Name on Bill               | Item in Item Master
+// For an order, New Items has a Qty column too, and the other two tabs MRP and Qty.
 const cell = 'border border-ink-200 px-1 py-0.5 break-words align-middle';
 const hd = 'border border-ink-200 px-1.5 py-1.5 text-center align-middle text-[11px]';
 const box = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[12px] uppercase focus:border-brand-400 focus:bg-white focus:outline-none disabled:text-ink-500';
 
-function ItemGrid({ tab, rows, disabled, update, remove, addAfter }) {
+function ItemGrid({ tab, rows, disabled, update, remove, addAfter, cols: fields, forOrder }) {
   const second = tab === 'similar' ? 'Matched to' : tab === 'exists' ? 'Item in Item Master' : null;
-  const cols = 3;
+  // For an order, matched and existing items go on it too: their Qty / MRP can be changed here.
+  const extra = tab === 'new' ? fields : forOrder ? fields.filter(([f]) => f === 'mrp' || f === 'qty') : [];
+  const cols = 2 + extra.length + (second ? 1 : 0) + (tab === 'new' ? 1 : 0);
   const rename = (v) => (e) => update(v.id, { name: e.target.value.toUpperCase(), choice: null });
+  const setField = (v, f) => (e) => update(v.id, { [f]: f === 'mrp' || f === 'qty' ? e.target.value : e.target.value.toUpperCase() });
+  const at = tab === 'new' ? 1 : 2; // grid column (data-c) of the first extra cell
+  const extraCells = (v, r) => extra.map(([f, head], c) => (
+    <td key={f} className={cell}>
+      <input
+        className={`${box} ${f === 'mrp' || f === 'qty' ? 'text-right' : ''}`}
+        data-r={r}
+        data-c={c + at}
+        inputMode={f === 'mrp' || f === 'qty' ? 'decimal' : undefined}
+        value={v[f]}
+        disabled={disabled || v.status === 'dup'}
+        aria-label={head}
+        onChange={setField(v, f)}
+      />
+    </td>
+  ));
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full table-fixed border-collapse text-left text-[12px]" {...gridKeys}>
+      <table className={`w-full table-fixed border-collapse text-left text-[12px] ${tab === 'new' && extra.length ? 'min-w-[860px]' : ''} ${tab === 'new' && !extra.length ? 'max-w-2xl' : ''}`} {...gridKeys}>
         <thead>
           <tr className="bg-brand-50 text-[11px] font-bold leading-tight text-brand-700">
             <th className={`${hd} w-10`}>#</th>
             <th className={`${hd} !text-left`}>{tab === 'new' ? 'Item Name' : 'Name on Bill'}</th>
-            {second && <th className={`${hd} w-[48%] !text-left`}>{second}</th>}
-            {tab === 'new' && <th className={`${hd} w-16`} />}
+            {tab === 'new' && extra.map(([f, head, width]) => <th key={f} className={`${hd} ${width}`}>{head}</th>)}
+            {second && <th className={`${hd} ${extra.length ? 'w-[40%]' : 'w-[48%]'} !text-left`}>{second}</th>}
+            {tab !== 'new' && extra.map(([f, head]) => <th key={f} className={`${hd} w-20`}>{head}</th>)}
+            {tab === 'new' && <th className={`${hd} w-24`}>Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -500,10 +659,11 @@ function ItemGrid({ tab, rows, disabled, update, remove, addAfter }) {
                       <input className={box} data-r={r} data-c={0} value={v.name} disabled={disabled} placeholder="Type the item name" onChange={rename(v)} />
                       {bad && <p className="px-1 text-[11px] text-red-600">{bad}</p>}
                     </td>
+                    {extraCells(v, r)}
                     <td className={cell}>
-                      <div className="flex justify-center">
-                        <button type="button" data-r={r} data-c={1} className="rounded p-0.5 text-brand-600 hover:bg-brand-50" disabled={disabled} title="Add a row below" onClick={() => addAfter(v.id)}><Plus size={13} /></button>
-                        <button type="button" data-r={r} data-c={2} className="rounded p-0.5 text-red-500 hover:bg-red-50" disabled={disabled} title="Delete row" onClick={() => remove(v.id)}><Trash2 size={13} /></button>
+                      <div className="flex justify-center gap-3">
+                        <button type="button" data-r={r} data-c={extra.length + 1} className="rounded p-1 text-brand-600 hover:bg-brand-50" disabled={disabled} title="Add a row below" onClick={() => addAfter(v.id)}><Plus size={16} /></button>
+                        <button type="button" data-r={r} data-c={extra.length + 2} className="rounded p-1 text-red-500 hover:bg-red-50" disabled={disabled} title="Delete row" onClick={() => remove(v.id)}><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </>
@@ -532,6 +692,7 @@ function ItemGrid({ tab, rows, disabled, update, remove, addAfter }) {
                         <option value={NEW}>➕ Not the same — add as a new item</option>
                       </select>
                     </td>
+                    {extraCells(v, r)}
                   </>
                 )}
 
@@ -543,6 +704,7 @@ function ItemGrid({ tab, rows, disabled, update, remove, addAfter }) {
                       {v.status === 'exists' && <span className="text-ink-600">{v.m.exact.Name} <span className="text-ink-400">({code(v.m.exact)}){v.m.exact.Status === 'Inactive' ? ' · Inactive' : ''}</span></span>}
                       {v.status === 'dup' && <span className="text-ink-400">Repeated on the bill</span>}
                     </td>
+                    {extraCells(v, r)}
                   </>
                 )}
               </tr>

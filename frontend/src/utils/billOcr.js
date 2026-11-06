@@ -135,14 +135,16 @@ export async function createOcr() {
       }
       return best.deg;
     },
-    // Read the page, or just rect on it -> { text, layout: [[{ t, x }]] }, x as
-    // a share of the area's width (lets a manufacturer column be told apart).
+    // Read the page, or just rect on it -> { text, layout: [[{ t, x, x1, c }]] },
+    // x / x1 (left / right edge) as shares of the area's width — lets the
+    // bill's columns (Rack, MFR, Item Description, HSN...) be told apart;
+    // c: how sure OCR is of the word (0-100).
     async read(page, rect, percent) {
       onPercent = percent || null;
       try {
         const area = prepared(page, rect);
         const { data } = await worker.recognize(area);
-        const layout = (data.lines || []).map((l) => (l.words || []).map((w) => ({ t: w.text, x: w.bbox.x0 / area.width })));
+        const layout = (data.lines || []).map((l) => (l.words || []).map((w) => ({ t: w.text, x: w.bbox.x0 / area.width, x1: w.bbox.x1 / area.width, c: w.confidence })));
         return { text: data.text, layout };
       } finally {
         onPercent = null;

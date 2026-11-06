@@ -62,7 +62,8 @@ function fixOcrDigits(tok) {
 const cleanLine = (raw) => raw.replace(/[|¦[\]{}]/g, ' ').replace(/\s+/g, ' ').trim();
 // Stray marks around a word: *, ~, quotes, a full stop after DROPS...
 // (Also slashes from tick marks: "50MG/500MG/" -> "50MG/500MG".)
-const trimTok = (t) => t.replace(/^[*~"'“”‘’«»®©•.,;:!?_\-/\\]+|[*~"“”‘’«»®©•.,;:!?_\-/\\]+$/g, '');
+// (Pen ticks after a name come out as @, <, >, € too: "TAB@<" -> "TAB".)
+const trimTok = (t) => t.replace(/^[*~"'“”‘’«»®©•.,;:!?_\-/\\<>@€]+|[*~"“”‘’«»®©•.,;:!?_\-/\\<>@€]+$/g, '');
 
 // The bill's column header, e.g. "Rack MFR Item Description Pack Batch ...":
 // returns how many columns come before the item name (2 here), or null when
@@ -158,6 +159,9 @@ export function parseItemLine(input, lead = null, mfrX = null, needFigures = tru
 
   const text = name.join(' ').replace(/\s+([,.)])/g, '$1').trim();
   if (letters(text) < 3 || !/[A-Za-z]{3,}/.test(text)) return null;
+  // A bold header OCR couldn't read comes out as bits: "SUED KN EE EY IEE FY ER CA".
+  const parts = text.split(' ');
+  if (parts.length >= 4 && parts.filter((p) => p.length <= 2).length >= parts.length / 2) return null;
   // OCR noise: mostly symbols, or one long word of random case.
   const clean = text.replace(/[^A-Za-z0-9 ]/g, '');
   if (clean.length < text.length * 0.7) return null;
@@ -198,6 +202,9 @@ export function extractItems(text, layout = null, { column = false } = {}) {
     const hits = [];
     let lead = null;
     for (const words of lines) {
+      // Noise OCR wasn't sure of anywhere on the line (an unreadable bold
+      // header, stamps, pen marks): real item lines have some word it is sure of.
+      if (words.length && words.every((w) => w.c != null && w.c < 60)) continue;
       if (!column) {
         const head = headerLead(words.map((w) => w.t).join(' '));
         if (head != null) { lead = head; headerFound = true; continue; }
@@ -224,6 +231,380 @@ export function extractItems(text, layout = null, { column = false } = {}) {
   return out;
 }
 
+// --- Bill columns ----------------------------------------------------------
+// When the read area includes the bill's header row, each column is read into
+// its Item Master field:
+//   Item Description -> Item Name   HSNCODE -> HSN    Rack -> Rack
+//   MFR -> Manufacturer             Batch -> Category Pack -> Pack   MRP -> MRP
+// Other headings (Qty, Exp, Rate, Amount...) are kept as columns too, only so
+// their figures don't spill into the ones above; they aren't saved.
+
+// Header text as plain lower-case letters: "M.R.P." -> "mrp", "HSN/SAC" -> "hsnsac".
+const headKey = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+const HEADINGS = [
+  ['name', /^(itemdescription|itemname|itemdetails|productname|productdescription|descriptionofgoods|description|particulars|product|products|medicine|nameofproduct|items?)$/],
+  ['hsnCode', /^(hsn|hsncode|hsnsac|hsnno|hsnc)$/],
+  ['rack', /^(rack|rackno)$/],
+  ['manufacturer', /^(mfr|mfrs|mfg|mfgr|mfrname|manufacturer|mkt|company|comp)$/],
+  ['category', /^(batch|batchno|batchnumber|bno|btch)$/],
+  ['pack', /^(pack|packing|pkg|packsize|pak)$/],
+  ['mrp', /^(mrp|mrprs)$/],
+  // Read only for a Purchase Order (Item Master has no quantity).
+  ['qty', /^(qty|qnty|qtty|quantity|billqty)$/],
+  // Not saved, but named so "Old MRP" isn't taken for the MRP column.
+  ['_', /^(oldmrp|ptr|pts|freeqty)$/],
+];
+const headingOf = (key) => (HEADINGS.find(([, re]) => re.test(key)) || [null])[0];
+const PHRASE_GAP = 0.012; // words of one heading ("Item Description") are closer than this
+
+// One line of positioned words -> its columns [{ field | null, x, x1 }] sorted
+// left to right, or null when the line isn't the item table's header (it must
+// name the Item Description column and at least two others).
+function headerColumns(words) {
+  const ws = words.filter((w) => w.x != null && w.x1 != null && headKey(w.t));
+  const cols = [];
+  for (let i = 0; i < ws.length;) {
+    let hit = null;
+    for (let n = Math.min(3, ws.length - i); n >= 1 && !hit; n -= 1) {
+      const part = ws.slice(i, i + n);
+      const field = headingOf(part.map((w) => headKey(w.t)).join(''));
+      if (field) hit = { field, x: part[0].x, x1: part[n - 1].x1, n };
+    }
+    if (hit) { if (hit.field === '_') hit.field = null; cols.push(hit); i += hit.n; continue; }
+    const w = ws[i];
+    const prev = cols[cols.length - 1];
+    // A heading word OCR didn't recognise, right after a heading ("Item Descripti0n"),
+    // belongs to it; on its own it's another column (Qty, Exp, Rate...).
+    if (prev && w.x - prev.x1 < PHRASE_GAP) prev.x1 = w.x1;
+    else cols.push({ field: null, x: w.x, x1: w.x1, n: 1 });
+    i += 1;
+  }
+  const known = cols.filter((c) => c.field);
+  if (!known.some((c) => c.field === 'name')) return null;
+  if (new Set(known.map((c) => c.field)).size < 3) return null;
+  // A field named twice (two "Pack" headings): keep the first.
+  const seen = new Set();
+  for (const c of cols) {
+    if (c.field && seen.has(c.field)) c.field = null;
+    else if (c.field) seen.add(c.field);
+  }
+  cols.sort((a, b) => a.x - b.x);
+  // Where each column ends: halfway to the next heading — except Item
+  // Description, whose names are long and run on up to the next heading.
+  for (let i = 0; i < cols.length; i += 1) {
+    const next = cols[i + 1];
+    cols[i].end = !next ? Infinity : cols[i].field === 'name' ? next.x - 0.004 : (cols[i].x1 + next.x) / 2;
+  }
+  return cols;
+}
+
+const columnAt = (cols, w) => {
+  const mid = w.x1 != null ? (w.x + w.x1) / 2 : w.x;
+  return cols.find((c) => mid < c.end) || cols[cols.length - 1];
+};
+
+const words = (ws) => ws.map((w) => trimTok(cleanLine(w.t))).filter(Boolean);
+const CLEAN = {
+  hsnCode: (ws) => {
+    const d = words(ws).map(fixOcrDigits).join('').replace(/\D/g, '');
+    return /^\d{4,8}$/.test(d) ? d : '';
+  },
+  rack: (ws) => words(ws).join(' ').toUpperCase().slice(0, 50),
+  manufacturer: (ws) => words(ws).join(' ').toUpperCase().slice(0, 200),
+  // A batch number has no spaces; OCR sometimes splits one ("B 2304").
+  category: (ws) => words(ws).join('').toUpperCase().slice(0, 100),
+  pack: (ws) => words(ws).map(fixOcrDigits).join(' ').toUpperCase().slice(0, 50),
+  mrp: (ws) => {
+    const nums = words(ws).map((t) => fixOcrDigits(t).replace(/^[₹$]|^rs\.?/i, '').replace(/,(\d{1,2})$/, '.$1').replace(/,/g, ''))
+      .filter((t) => /^\d+(\.\d{1,2})?$/.test(t));
+    return nums.length ? Number(nums[nums.length - 1]).toFixed(2) : '';
+  },
+  // "10", "10+2" (2 free) -> "10"
+  qty: (ws) => {
+    const t = words(ws).map(fixOcrDigits).join(' ');
+    const m = /\d+(\.\d+)?/.exec(t);
+    return m && Number(m[0]) > 0 ? String(Number(m[0])) : '';
+  },
+};
+export const BILL_FIELDS = ['name', 'hsnCode', 'rack', 'manufacturer', 'category', 'pack', 'mrp', 'qty'];
+
+// --- Columns found from the item rows (when the header can't be read) ------
+// Bold, boxed bill headers often come out of OCR as noise ("SEE en ©"), but
+// the item rows read well. Then the columns are found from the rows: a row's
+// words that sit close together form a cell ("NASIVION PAED DROPS"), cells
+// at the same place on every row form a column, and what a column holds says
+// what it is — rack numbers, MFR codes, the names, pack sizes, batch numbers,
+// expiry dates, quantities, prices, HSN codes.
+
+const EXP = /^(0?[1-9]|1[0-2])[/\-.]?\d{2}$/; // 04/28, 0428
+const PACKISH = /^(\d+\s*[x*×]\s*\d+|\d+\s*['`’]?\s*[sS5]|\d+(\.\d+)?\s*(ml|gm?|kg|l|mg|mcg)|1[o0]s)$/i; // 15'S, 10 S, 10ML, 30ML, 105 (10S read as 105)
+const share = (cells, test) => (cells.length ? cells.filter((c) => test(c.t)).length / cells.length : 0);
+// OCR reads 5 as $ or S inside prices and drops decimal points: "$0.00" -> 50.00, "17525" -> 175.25.
+const priceOf = (t, decimals) => {
+  let s = t.replace(/[$S]/g, '5').replace(/[oO]/g, '0').replace(/[:;,]/g, '.').replace(/[^\d.]/g, '');
+  if (!/\d/.test(s)) return null;
+  if (decimals && !s.includes('.') && s.length >= 3) s = `${s.slice(0, -2)}.${s.slice(-2)}`;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+
+function rowCells(line, gap) {
+  const ws = line
+    .map((w) => ({ t: trimTok(cleanLine(w.t)), x: w.x, x1: w.x1 }))
+    .filter((w) => w.t && w.x != null && w.x1 != null)
+    .sort((a, b) => a.x - b.x);
+  const cells = [];
+  for (const w of ws) {
+    const last = cells[cells.length - 1];
+    if (last && w.x - last.x1 < gap) { last.t += ` ${w.t}`; last.x1 = w.x1; last.words.push(w); } else cells.push({ ...w, words: [w] });
+  }
+  return cells;
+}
+
+function extractByContent(layout) {
+  const lines = layout.map((l) => l.filter((w) => w.x != null && w.x1 != null)).filter((l) => l.length);
+  // Width of one letter, from the words on lines that look like item rows
+  // (the bill's big header print would make it too wide): gaps under ~0.8
+  // of it are a space inside a cell.
+  const rowish = lines.filter((l) => l.filter((w) => /\d/.test(w.t)).length >= 4);
+  const widths = rowish.flat().filter((w) => /^[A-Za-z]{4,}$/.test(w.t)).map((w) => (w.x1 - w.x) / w.t.length);
+  if (widths.length < 3) return null;
+  const gap = median(widths) * 0.8;
+  // Item rows: a word (the name) and about as many figures as the fullest row
+  // (rack, batch, expiry, qty, prices, HSN...). Header noise and the
+  // supplier's address have far fewer; totals and notes are left out.
+  const all = lines.map((l) => rowCells(l, gap));
+  const figuresOf = (cells) => cells.filter((c) => /\d/.test(c.t)).length;
+  const most = Math.max(...all.map(figuresOf));
+  const rows = all.filter((cells) => {
+    const text = cells.map((c) => c.t).join(' ');
+    return figuresOf(cells) >= Math.max(4, most * 0.5) && /[A-Za-z]{3,}/.test(text) && !/\b(total|grand|goods\s*value|taxable|amount|bill\s*amt|net)\b/i.test(text);
+  });
+  if (rows.length < 2) return null;
+
+  // Columns: cells of different rows that overlap side to side.
+  const spans = rows.flat().map((c) => [c.x, c.x1]).sort((a, b) => a[0] - b[0]);
+  const cols = [];
+  for (const [a, b] of spans) {
+    const last = cols[cols.length - 1];
+    if (last && a < last.x1) last.x1 = Math.max(last.x1, b); else cols.push({ x: a, x1: b });
+  }
+  const cellsIn = (col) => rows.map((cells) => cells.filter((c) => c.x < col.x1 && c.x1 > col.x)).flat();
+  for (const col of cols) col.cells = cellsIn(col);
+  // A column needs cells on at least a third of the rows (not a stray mark).
+  const real = cols.filter((c) => c.cells.length >= Math.max(2, rows.length / 3));
+
+  // Item Description: the column with the most letters.
+  const nameCol = real.reduce((best, c) => {
+    const n = c.cells.reduce((s, x) => s + letters(x.t), 0);
+    return !best || n > best.n ? { col: c, n } : best;
+  }, null)?.col;
+  if (!nameCol) return null;
+  const at = real.indexOf(nameCol);
+  const left = real.slice(0, at);
+  const right = real.slice(at + 1);
+  const field = new Map(); // col -> field
+  // Left of the names: MFR codes (letters) and the rack number (digits).
+  for (const c of left) {
+    if (share(c.cells, (t) => /^[A-Za-z]{2,8}$/.test(t)) >= 0.6) field.set(c, 'manufacturer');
+    else if (share(c.cells, (t) => /^[\dA-Za-z]{1,5}$/.test(t) && /\d/.test(t.replace(/[lIoOs]/g, '0'))) >= 0.6 && ![...field.values()].includes('rack')) field.set(c, 'rack');
+  }
+  const pick = (name, test, min = 0.5, from = 0) => {
+    const c = right.slice(from).find((col) => !field.has(col) && share(col.cells, test) >= min);
+    if (c) field.set(c, name);
+    return c ? right.indexOf(c) : -1;
+  };
+  const packAt = pick('pack', (t) => PACKISH.test(t.replace(/\s+/g, '')));
+  const batchAt = pick('category', (t) => /^[A-Za-z0-9\-/]{4,20}$/.test(t) && /\d/.test(t) && !EXP.test(t) && !HSN.test(t) && !/^\d+[.,]\d{2}$/.test(t), 0.5, Math.max(0, packAt + 1));
+  pick('hsnCode', (t) => HSN.test(t.replace(/\D/g, '')) && t.replace(/\D/g, '').length >= 6, 0.6);
+  const expAt = right.findIndex((col) => !field.has(col) && share(col.cells, (t) => EXP.test(t)) >= 0.5);
+  if (expAt >= 0) field.set(right[expAt], 'exp');
+  // Qty: small whole numbers (not "000", an Old MRP that lost its point), after the expiry.
+  const qtyAt = pick('qty', (t) => /^\d{1,4}$/.test(t) && Number(t) > 0, 0.6, Math.max(0, expAt + 1, batchAt + 1));
+  // MRP: the first price column after Qty that isn't mostly 0.00 (Old MRP usually is).
+  const priceCol = (col) => share(col.cells, (t) => /^[\d$S.,:]+$/.test(t) && /\d/.test(t)) >= 0.6;
+  const mrpCol = right.slice(Math.max(0, qtyAt + 1)).find((col) => !field.has(col) && priceCol(col)
+    && share(col.cells, (t) => (priceOf(t, true) || 0) > 0) >= 0.6);
+  if (mrpCol) field.set(mrpCol, 'mrp');
+  // The Rate column after MRP: an MRP below the rate lost digits in OCR
+  // ("1:50" for 111.50) — better left empty to fill in than saved wrong.
+  const rateCol = mrpCol && right.slice(right.indexOf(mrpCol) + 1).find((col) => !field.has(col) && priceCol(col));
+
+  const out = [];
+  const seen = new Set();
+  for (const cells of rows) {
+    const inCol = (col) => cells.filter((c) => c.x < col.x1 && c.x1 > col.x);
+    const nameWords = inCol(nameCol).flatMap((c) => c.words);
+    const hit = parseItemLine(nameWords.flatMap((w) => splitGlued(w.t).split(' ').map((t) => ({ t, x: w.x }))), 0, null, false);
+    if (!hit) continue;
+    const k = compact(hit.name);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const row = { name: hit.name, hsnCode: '', rack: '', manufacturer: '', category: '', pack: '', mrp: '', qty: '' };
+    for (const [col, f] of field) {
+      const ws = inCol(col).flatMap((c) => c.words);
+      if (f === 'exp' || !ws.length) continue;
+      if (f === 'mrp') {
+        const n = priceOf(ws.map((w) => w.t).join(''), true);
+        const rateWs = rateCol ? inCol(rateCol).flatMap((c) => c.words) : [];
+        // (Only a rate read with its decimal point is trusted for this.)
+        const rateText = rateWs.map((w) => w.t).join('');
+        const rate = /\d\.\d{2}/.test(rateText) ? priceOf(rateText, true) : null;
+        row.mrp = n != null && !(rate != null && n < rate) ? n.toFixed(2) : '';
+      } else if (f === 'pack') {
+        row.pack = words(ws).join('').toUpperCase().replace(/^(\d+)O(\d*)/, '$10$2').replace(/^(\d+)[S5]$/, "$1'S").replace(/^1[O0]S$/, "10'S").replace(/^(\d+)'?S$/, "$1'S").slice(0, 50);
+      } else if (f === 'rack') {
+        // Number racks read as letters: "0ll" / "ott" -> 011, "01s" -> 015.
+        const raw = words(ws).join('').toUpperCase();
+        row.rack = (/^[\dOLITS]{2,4}$/.test(raw) ? raw.replace(/[LIT]/g, '1').replace(/O/g, '0').replace(/S$/, '5') : raw).slice(0, 50);
+      } else row[f] = CLEAN[f](ws);
+    }
+    if (!row.pack && hit.pack) row.pack = hit.pack;
+    out.push(row);
+  }
+  if (!out.length) return null;
+  const found = new Set(['name', ...field.values()]);
+  return { fields: BILL_FIELDS.filter((f) => found.has(f)), rows: out };
+}
+
+// OCR sometimes runs a name's words together: "CLONAMPEL2MG" -> "CLONAMPEL 2MG",
+// "CLONAMPELIMGTAB" -> "CLONAMPEL 1MG TAB".
+function splitGlued(t) {
+  const m = /^([A-Za-z]{4,})(\d+(?:\.\d+)?|[Il])(mg|ml|mcg|gm)(tab|tabs|cap|caps|syp|inj)?$/i.exec(t);
+  if (!m) return t;
+  const strength = m[2].replace(/^[Il]$/, '1') + m[3];
+  return [m[1], strength, m[4]].filter(Boolean).join(' ');
+}
+
+// The bill's item rows split into its columns: { fields: [field names whose
+// column was found], rows: [{ name, hsnCode, rack, manufacturer, category,
+// pack, mrp, qty }] }, or null when no header row was read (then only names can be
+// picked out — see extractItems). layout: lines of positioned words [[{ t, x, x1 }]].
+export function extractBillRows(layout) {
+  if (!layout) return null;
+  let cols = null;
+  const found = new Set();
+  const out = [];
+  const seen = new Set();
+  for (const line of layout) {
+    const head = headerColumns(line);
+    if (head) { cols = head; head.forEach((c) => c.field && found.add(c.field)); continue; }
+    if (!cols || !line.length) continue;
+    const by = new Map(cols.map((c) => [c, []]));
+    for (const w of line) by.get(columnAt(cols, w)).push(w);
+    const nameCol = cols.find((c) => c.field === 'name');
+    // An item row carries figures outside the name (batch, qty, rate...);
+    // the supplier's notes, totals and a wrapped second line don't.
+    const figures = cols.filter((c) => c !== nameCol).reduce((n, c) => n + by.get(c).filter((w) => /\d/.test(w.t)).length, 0);
+    if (figures < 2) continue;
+    const hit = parseItemLine(by.get(nameCol), 0, null, false);
+    if (!hit) continue;
+    const k = compact(hit.name);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const row = { name: hit.name };
+    for (const f of BILL_FIELDS.slice(1)) {
+      const c = cols.find((col) => col.field === f);
+      row[f] = c ? CLEAN[f](by.get(c)) : '';
+    }
+    if (!row.pack && hit.pack) row.pack = hit.pack;
+    out.push(row);
+  }
+  // No readable header (or nothing under it): find the columns from the rows.
+  if (!cols || !out.length) return extractByContent(layout);
+  return { fields: BILL_FIELDS.filter((f) => found.has(f)), rows: out };
+}
+
+// --- Supplier and bill date (top of the bill) ------------------------------
+// The supplier's block is the top-left of the bill, above the customer's
+// ("M/s.", "Customer", "Bill To"...); the right side holds the GST No, the
+// invoice box... on the same lines. -> { vendorName, address, mobile, gstNo,
+// email, billDate: 'yyyy-mm-dd' } (each '' when not read).
+
+const CUSTOMER = /(c?ustomer\b|\bcust\.?\s*code|\bm\s*\/\s*s\b|\bbill\s*to|billed\s*to|ship\s*to|buyer|consignee|party\s*name|sold\s*to|deliver\s*to)/i;
+const NOT_NAME = /\b(tax\s*invoice|invoice|bill\s*of\s*supply|original|duplicate|triplicate|cash|credit|estimate|gst|dl\s*no|phone|mobile)\b/i;
+const CONTACT_TOK = /^(complaint|complalat|billing|phone|ph|mob|mobile|cell|tel|whats\w*|accounts?|email|e-?mail|gst\w*|dl|d\.l\.?|fssai|website|www\S*)\b/i;
+const PHONE_NO = /(?<!\d)[6-9]\d{9}(?!\d)/;
+const GSTIN = /\b\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]\b/;
+const EMAIL_ADDR = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
+
+// dd/mm/yy, dd-mm-yyyy, "01/1026" (a lost slash) -> 'yyyy-mm-dd' or ''.
+export function billDateOf(raw) {
+  const t = String(raw || '').trim();
+  let d; let m; let y;
+  const parts = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2}|\d{4})$/.exec(t);
+  if (parts) [, d, m, y] = parts;
+  else {
+    const digits = t.replace(/\D/g, '');
+    if (digits.length === 6) [d, m, y] = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)];
+    else if (digits.length === 8) [d, m, y] = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)];
+    else return '';
+  }
+  const year = Number(y.length === 2 ? `20${y}` : y);
+  const month = Number(m);
+  const day = Number(d);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (year < 2000 || year > 2100 || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+export function extractBillHeader(layout) {
+  const lines = (layout || []).map((l) => l.filter((w) => w.x != null).sort((a, b) => a.x - b.x)).filter((l) => l.length);
+  const out = { vendorName: '', address: '', mobile: '', gstNo: '', email: '', billDate: '' };
+  const textOf = (ws) => ws.map((w) => w.t).join(' ');
+
+  // Bill date: "Bill Date : 01/10/26", "Invoice Date", or a plain "Date :".
+  for (const re of [/\b(bill|invoice|inv)\.?\s*date\b\s*[:\-.]?\s*([0-9][0-9/\-. ]{4,10}[0-9])/i, /\bdate\b\s*[:\-.]?\s*([0-9][0-9/\-. ]{4,10}[0-9])/i]) {
+    for (const l of lines) {
+      const m = re.exec(textOf(l));
+      const date = m && billDateOf(m[m.length - 1].split(' ')[0]);
+      if (date) { out.billDate = date; break; }
+    }
+    if (out.billDate) break;
+  }
+
+  // The supplier's block: lines above the customer's.
+  const end = lines.findIndex((l) => CUSTOMER.test(textOf(l)));
+  const block = lines.slice(0, end > 0 ? end : Math.min(lines.length, 8));
+  const blockText = block.map(textOf).join('\n');
+  out.mobile = (PHONE_NO.exec(blockText.replace(/[\s-]/g, (c) => (c === '\n' ? c : ''))) || [''])[0];
+  out.gstNo = (GSTIN.exec(blockText.toUpperCase()) || [''])[0];
+  const email = (EMAIL_ADDR.exec(blockText) || [''])[0];
+  out.email = /\.[a-z]{2,}$/i.test(email) ? email : '';
+
+  // Each line's left part — the words before the right side's column (GST
+  // No, DL No, Email... which starts after a wide gap at about the same place
+  // on each line) — without phone numbers, emails and their labels.
+  const widths = block.flat().filter((w) => /^[A-Za-z]{4,}$/.test(w.t)).map((w) => (w.x1 - w.x) / w.t.length);
+  const wide = (widths.length ? median(widths) : 0.008) * 4;
+  const rightStarts = block.map((l) => l.find((w, i) => i > 0 && w.x > 0.3 && w.x - (l[i - 1].x1 ?? l[i - 1].x) >= wide)?.x).filter((x) => x != null);
+  const rightAt = rightStarts.length ? median(rightStarts) - 0.005 : 0.5;
+  const leftOf = (l) => {
+    const kept = [l[0]];
+    // (A gap twice as wide also ends it: a stray mark far off to the right.)
+    for (let i = 1; i < l.length && l[i].x < rightAt && l[i].x - (l[i - 1].x1 ?? l[i - 1].x) < wide * 2; i += 1) kept.push(l[i]);
+    return kept;
+  };
+  const leftParts = block.map((l) => (l[0].x > 0.3 ? '' : leftOf(l)
+    .map((w) => trimTok(cleanLine(w.t)))
+    .filter((t) => t && !CONTACT_TOK.test(t) && !/\d{6,}|@/.test(t) && !/^[^A-Za-z0-9]+$/.test(t))
+    .join(' ')
+    .trim()));
+  const nameAt = leftParts.findIndex((p) => letters(p) >= 4 && !NOT_NAME.test(p) && /[A-Za-z]{3,}/.test(p));
+  if (nameAt < 0) return out;
+  out.vendorName = leftParts[nameAt].replace(/\s+/g, ' ').toUpperCase().slice(0, 200);
+  // Address: the lines after the name, leaving out "(Division of ...)" notes
+  // and lines that held only contact details.
+  out.address = leftParts.slice(nameAt + 1)
+    .filter((p) => letters(p) >= 3 && !/^\(/.test(p) && !/^(of|division)\b/i.test(p) && !/division|distribution\s*service/i.test(p))
+    .slice(0, 3)
+    .join(', ')
+    .replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500);
+  return out;
+}
+
 // --- Matching ------------------------------------------------------------
 
 // "Eltroxin  75mg Tab" and "ELTROXIN 75MG TAB." compare equal.
@@ -247,6 +628,10 @@ function dice(a, b) {
   for (const [g, n] of A) common += Math.min(n, B.get(g) || 0);
   return (2 * common) / (a.length - 1 + b.length - 1);
 }
+
+// How alike two names are, 0..1, ignoring case, spaces and punctuation
+// ("NAGAMMAIL PHARMA" vs "Nagammai Pharma" is about 0.96).
+export const likeness = (a, b) => dice(compact(a), compact(b));
 
 // Items -> an index the matcher reuses for every bill line.
 export function buildIndex(items) {

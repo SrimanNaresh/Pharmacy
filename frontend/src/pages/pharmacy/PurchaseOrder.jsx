@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Plus, Trash2, Save, X, List, ChevronRight, ChevronLeft, ListPlus, Search, Pencil, Check } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Save, X, List, ChevronRight, ChevronLeft, ListPlus, Search, Pencil, Check, ScanLine } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 import { useToast } from '../../hooks/useToast.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import ItemFormModal from './ItemFormModal.jsx';
+import ScanBillModal from './ScanBillModal.jsx';
+import { likeness } from '../../utils/billScan.js';
 import { itemMasterApi, purchaseOrderApi, vendorApi } from '../../api/client.js';
 import { purchaseLine, purchaseTotal, roundOffOf } from '../../utils/purchaseCalc.js';
 
@@ -117,6 +119,7 @@ export default function PurchaseOrder() {
   const [lastRates, setLastRates] = useState({});
   // Add / Edit item popup from the Item Name list: null or { name } / { id }, plus the row it came from.
   const [itemForm, setItemForm] = useState(null);
+  const [scanOpen, setScanOpen] = useState(false);
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
 
@@ -166,10 +169,11 @@ export default function PurchaseOrder() {
   };
 
   const saveNewVendor = async () => {
-    const { name, address, mobile } = newVendor;
+    const { name, address, mobile, gstNo, email } = newVendor;
     if (!name.trim() || !address.trim() || !mobile.trim()) return show('Vendor name, Address and Mobile are all required', 'error');
     try {
-      const v = await vendorApi.create({ vendorName: name, address, contactNo: mobile });
+      // GSTIN / email come only from a scanned bill (not typed here).
+      const v = await vendorApi.create({ vendorName: name, address, contactNo: mobile, ...(gstNo ? { gstNo } : {}), ...(email ? { email } : {}) });
       setVendors((all) => [v, ...all]);
       setVendorId(String(v.VendorId));
       setDetails(vendorDetails(v));
@@ -294,6 +298,69 @@ export default function PurchaseOrder() {
     for (const i of bulkPickable) { if (allTicked) ticked.delete(String(i.ItemId)); else ticked.add(String(i.ItemId)); }
     return { ...b, ticked };
   });
+  // Scan Bill: the bill's items (new ones already added to Item Master) go on
+  // the order with the bill's Qty and MRP. An item already on the order is
+  // left as it is.
+  // The bill's supplier and date: an existing vendor of (nearly) the same
+  // name is picked; a new one opens the Add vendor box filled in, to check
+  // and save. Only when no vendor is picked yet — a chosen one is kept.
+  const fillSupplier = (s) => {
+    if (!s) return '';
+    const notes = [];
+    if (s.billDate) { setOrderDate(s.billDate); notes.push('bill date'); }
+    if (!s.vendorName || vendorId) return notes.join(', ');
+    const best = vendors
+      .filter((v) => v.Status !== 'Inactive')
+      .map((v) => ({ v, score: likeness(v.VendorName, s.vendorName) }))
+      .sort((a, b) => b.score - a.score)[0];
+    if (best && best.score >= 0.85) {
+      pickVendor(String(best.v.VendorId));
+      notes.push(`vendor ${best.v.VendorName}`);
+    } else {
+      setNewVendor({ name: s.vendorName, address: s.address, mobile: s.mobile, gstNo: s.gstNo, email: s.email });
+      setDetails([s.address, s.mobile && `Mobile: ${s.mobile}`, s.email && `Email: ${s.email}`, s.gstNo && `GSTIN: ${s.gstNo}`].filter(Boolean).join('\n'));
+      setShowDetails(true);
+      notes.push('new vendor — check it and press Add vendor');
+    }
+    return notes.join(', ');
+  };
+
+  const addScanned = async (scanned, { added, inactive, supplier }) => {
+    let list = items;
+    try {
+      list = await itemMasterApi.list({ status: 'Active' });
+      setItems(list);
+    } catch {
+      show('Failed to reload items', 'error');
+    }
+    const byId = new Map(list.map((i) => [String(i.ItemId), i]));
+    const have = new Set(lines.map((l) => l.itemId).filter(Boolean));
+    if (draft.itemId) have.add(draft.itemId);
+    const fresh = [];
+    let already = 0;
+    for (const s of scanned) {
+      const it = byId.get(String(s.itemId));
+      if (!it) continue;
+      if (have.has(String(it.ItemId))) { already += 1; continue; }
+      have.add(String(it.ItemId));
+      const line = lineFromItem(it);
+      if (Number(s.qty) > 0) line.qty = s.qty;
+      if (s.mrp !== '' && Number(s.mrp) >= 0) line.mrp = numStr(s.mrp);
+      fresh.push(line);
+    }
+    if (fresh.length) setLines((ls) => [...ls.filter((l) => l.itemId), ...fresh]);
+    setScanOpen(false);
+    setPoTab('items');
+    const filledIn = fillSupplier(supplier);
+    const notes = [
+      filledIn && `filled in: ${filledIn}`,
+      added ? `${added} new to Item Master` : '',
+      already ? `${already} already on the order` : '',
+      inactive ? `${inactive} inactive left out` : '',
+    ].filter(Boolean).join(' · ');
+    show(`Added ${fresh.length} item${fresh.length === 1 ? '' : 's'} from the bill${notes ? ` (${notes})` : ''} — enter the P.Rate for each`, 'success');
+  };
+
   const addTicked = () => {
     const toAdd = items.filter((i) => bulk.ticked.has(String(i.ItemId)) && !inTable.has(String(i.ItemId)));
     setLines((ls) => [...ls.filter((l) => l.itemId), ...toAdd.map(lineFromItem)]);
@@ -371,9 +438,16 @@ export default function PurchaseOrder() {
             title={editing ? `Edit Order · ${editing.no}` : 'Purchase / Order'}
             subtitle={<span className="hidden md:inline">{editing ? 'Update this order' : 'Order items from a vendor — this does not change stock'}</span>}
             actions={
-              <button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/purchase-order-list')}>
-                <List size={16} /> View List
-              </button>
+              <>
+                {!editing?.locked && (
+                  <button type="button" className="btn-secondary max-md:px-2 max-md:py-1 max-md:text-xs" onClick={() => setScanOpen(true)} title="Read a supplier's bill and put its items on this order">
+                    <ScanLine size={16} /> Scan Bill
+                  </button>
+                )}
+                <button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/purchase-order-list')}>
+                  <List size={16} /> View List
+                </button>
+              </>
             }
           />
 
@@ -753,6 +827,7 @@ export default function PurchaseOrder() {
         document.body,
       )}
       <ItemFormModal target={itemForm} onClose={() => { focusItemBox(itemForm.rowKey); setItemForm(null); }} onSaved={itemSaved} />
+      <ScanBillModal open={scanOpen} onClose={() => setScanOpen(false)} forOrder onLines={addScanned} />
       <Toast toast={toast} />
     </div>
   );
