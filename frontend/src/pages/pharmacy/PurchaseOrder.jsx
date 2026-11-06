@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Plus, Trash2, Save, X, List, ChevronRight, ChevronLeft, ListPlus, Search, Pencil, Check } from 'lucide-react';
 import { CardHeader, Toast } from '../../components/ui.jsx';
@@ -86,6 +87,23 @@ export default function PurchaseOrder() {
   // Phones: which tab shows — the entry form ('new') or the order's items ('items').
   const [poTab, setPoTab] = useState('new');
   const bulkRef = useRef(null);
+  // Phones: the page is sized to the screen (between the top bar and the footer
+  // bar) so only the New Item / Order Items area scrolls — but only when the
+  // fixed parts plus at least MIN_AREA px for that area fit; on a shorter screen
+  // the page scrolls normally instead. null = normal page flow.
+  const MIN_AREA = 120;
+  const pageRef = useRef(null);
+  const areaRef = useRef(null);
+  const footerRef = useRef(null);
+  const [fitHeight, setFitHeight] = useState(null);
+  const [screenSize, setScreenSize] = useState(0);
+  useEffect(() => {
+    const changed = () => setScreenSize((n) => n + 1);
+    const phone = window.matchMedia('(max-width: 767px)');
+    window.addEventListener('resize', changed);
+    phone.addEventListener('change', changed);
+    return () => { window.removeEventListener('resize', changed); phone.removeEventListener('change', changed); };
+  }, []);
   // Round Off: rounds the Sum of Total to the nearest rupee (on for a new order).
   const [roundOn, setRoundOn] = useState(true);
   const [showOptional, setShowOptional] = useState(false);
@@ -284,6 +302,16 @@ export default function PurchaseOrder() {
   };
 
   const filled = lines.filter((l) => l.itemId);
+  useLayoutEffect(() => {
+    const page = pageRef.current;
+    const main = page?.closest('main');
+    if (!page || !main || !window.matchMedia('(max-width: 767px)').matches) return setFitHeight(null);
+    const top = main.getBoundingClientRect().top + parseFloat(getComputedStyle(main).paddingTop);
+    const footer = footerRef.current?.getBoundingClientRect().height || 0;
+    const available = Math.floor(window.innerHeight - top - footer - 8);
+    const fixedParts = page.scrollHeight - (areaRef.current?.offsetHeight || 0);
+    setFitHeight(fixedParts + MIN_AREA <= available ? available : null);
+  }, [screenSize, poTab, bulk, showDetails, newVendor, editing, filled.length, draft.itemId]);
   const problems = new Map(filled.map((l) => [l.key, lineProblem(l)]).filter(([, p]) => p));
   const total = purchaseTotal(filled.map((l) => ({ pRate: l.pRate, discPercent: l.disc, quantity: l.qty, cgstPercent: l.cgst, sgstPercent: l.sgst })));
   const roundOff = roundOn ? roundOffOf(total) : 0;
@@ -335,13 +363,13 @@ export default function PurchaseOrder() {
   const optCols = showOptional ? 3 - 4 : 0;
 
   return (
-    <div>
-      <div className="card max-md:!px-3">
-        <form onSubmit={save}>
+    <div ref={pageRef} className={fitHeight ? 'flex flex-col' : ''} style={fitHeight ? { height: fitHeight } : undefined}>
+      <div className={`card max-md:!px-3 ${fitHeight ? 'flex min-h-0 flex-1 flex-col !pb-3' : ''}`}>
+        <form onSubmit={save} className={fitHeight ? 'flex min-h-0 flex-1 flex-col' : ''}>
           <CardHeader
             icon={ShoppingCart}
             title={editing ? `Edit Order · ${editing.no}` : 'Purchase / Order'}
-            subtitle={editing ? 'Update this order' : 'Order items from a vendor — this does not change stock'}
+            subtitle={<span className="hidden md:inline">{editing ? 'Update this order' : 'Order items from a vendor — this does not change stock'}</span>}
             actions={
               <button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/purchase-order-list')}>
                 <List size={16} /> View List
@@ -353,8 +381,8 @@ export default function PurchaseOrder() {
             <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-800">{editing.locked}</div>
           )}
 
-          <div className="grid grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap">
-            <div className="w-full sm:w-80">
+          <div className="grid grid-cols-[1fr_7rem] items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
+            <div className="min-w-0 sm:w-80">
               <label className="label">Vendor Name *</label>
               <div className="flex gap-1">
                 <div className="flex-1">
@@ -372,9 +400,9 @@ export default function PurchaseOrder() {
                 </button>
               </div>
             </div>
-            <div className="w-full sm:w-auto">
+            <div className="min-w-0 sm:w-auto">
               <label className="label">Date *</label>
-              <input type="date" className="input" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+              <input type="date" className="input max-md:!px-1.5" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
             </div>
           </div>
 
@@ -445,23 +473,25 @@ export default function PurchaseOrder() {
           {/* Phones: two tabs — New Item (the entry form; "Add to list" moves the item
               into the order and clears the form) and Order Items (the list with Edit /
               Delete) — then the totals. */}
-          <div className="mt-3 space-y-2.5 md:hidden">
+          <div className={`mt-3 flex flex-col gap-2.5 md:hidden ${fitHeight ? 'min-h-0 flex-1' : ''}`}>
             <div className="grid grid-cols-2 gap-1 rounded-xl bg-ink-100 p-1">
               <button
                 type="button" onClick={() => setPoTab('new')}
-                className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'new' ? (draftEditing ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-brand-700 shadow-sm') : 'text-ink-500'}`}
+                className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'new' ? (draftEditing ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-brand-700 shadow-sm') : 'text-ink-500'}`}
               >
                 {draftEditing ? <Pencil size={14} /> : <Plus size={14} />} {draftEditing ? 'Edit Item' : 'New Item'}
               </button>
               <button
                 type="button" onClick={() => setPoTab('items')}
-                className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'items' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500'}`}
+                className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'items' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500'}`}
               >
                 <List size={14} /> Order Items
                 <span className={`rounded-full px-1.5 text-[11px] ${filled.length ? 'bg-brand-600 text-white' : 'bg-ink-200 text-ink-500'}`}>{filled.length}</span>
               </button>
             </div>
 
+            {/* The only part that scrolls on a phone. */}
+            <div ref={areaRef} className={`space-y-2.5 ${fitHeight ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl' : ''}`}>
             <div className={poTab === 'new' ? '' : 'hidden'}>
             {(() => {
               const l = draft;
@@ -575,20 +605,19 @@ export default function PurchaseOrder() {
               })}
             </div>
 
-            <div className="rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
-              <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-ink-600">Sum of Total <span className="text-xs text-ink-400">· {filled.length} item(s)</span></span>
-                <span className="font-semibold tabular-nums text-ink-900">{money(total)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-ink-100 px-3 py-2">
-                <label className="inline-flex items-center gap-2 text-ink-600">
+            </div>
+
+            <div className="shrink-0 rounded-xl border border-ink-200 bg-white text-sm shadow-sm">
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[13px]">
+                <span className="text-ink-600">Sum of Total <b className="tabular-nums text-ink-900">{money(total)}</b></span>
+                <label className="inline-flex items-center gap-1.5 text-ink-600">
                   <input type="checkbox" checked={roundOn} onChange={(e) => setRoundOn(e.target.checked)} /> Round Off
+                  <span className={`tabular-nums ${roundOff < 0 ? 'text-red-600' : 'text-ink-700'}`}>{roundOff > 0 ? '+' : ''}{money(roundOff)}</span>
                 </label>
-                <span className={`tabular-nums ${roundOff < 0 ? 'text-red-600' : 'text-ink-700'}`}>{roundOff > 0 ? '+' : ''}{money(roundOff)}</span>
               </div>
-              <div className="flex items-center justify-between rounded-b-xl bg-brand-600 px-3 py-2.5 text-white">
-                <span className="font-semibold">Net Amount</span>
-                <span className="text-lg font-bold tabular-nums">₹{money(netAmount)}</span>
+              <div className="flex items-center justify-between rounded-b-xl bg-brand-600 px-3 py-1 text-white">
+                <span className="text-[13px] font-semibold">Net Amount</span>
+                <span className="text-[15px] font-bold tabular-nums">₹{money(netAmount)}</span>
               </div>
             </div>
           </div>
@@ -709,16 +738,20 @@ export default function PurchaseOrder() {
           </div>
         </form>
       </div>
-      {/* Phones: Bulk add items and View List stay in a bar at the bottom of the
-          screen while the page scrolls above it. */}
-      <div className="sticky bottom-[-12px] z-10 -mx-4 -mb-4 mt-3 grid grid-cols-2 gap-2 border-t border-ink-200 bg-white/95 px-4 py-2 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
-        <button type="button" className={`${bulk ? 'btn-primary' : 'btn-secondary'} whitespace-nowrap px-2`} onClick={toggleBulk}>
-          <ListPlus size={16} /> {bulk ? 'Close bulk add' : 'Bulk add items'}
-        </button>
-        <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/purchase-order-list')}>
-          <List size={16} /> View List
-        </button>
-      </div>
+      {/* Phones: Bulk add items and View List stay in a bar fixed to the bottom
+          edge of the screen while the page scrolls above it. Portaled to <body>, as the
+          page's fade-in wrapper would otherwise pin it to the page, not the screen. */}
+      {createPortal(
+        <div ref={footerRef} className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 gap-2 border-t border-ink-200 bg-white/95 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+          <button type="button" className={`${bulk ? 'btn-primary' : 'btn-secondary'} whitespace-nowrap px-2`} onClick={toggleBulk}>
+            <ListPlus size={16} /> {bulk ? 'Close bulk add' : 'Bulk add items'}
+          </button>
+          <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/purchase-order-list')}>
+            <List size={16} /> View List
+          </button>
+        </div>,
+        document.body,
+      )}
       <ItemFormModal target={itemForm} onClose={() => { focusItemBox(itemForm.rowKey); setItemForm(null); }} onSaved={itemSaved} />
       <Toast toast={toast} />
     </div>
