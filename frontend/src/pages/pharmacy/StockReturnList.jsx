@@ -87,8 +87,8 @@ export default function StockReturnList() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.StockReturnId} className="table-row">
-                    <td className="px-3 py-1.5 font-medium text-brand-700">{r.ReturnNo}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{dateLabel(r.ReturnDate)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 font-medium text-brand-700">{r.ReturnNo}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dateLabel(r.ReturnDate)}</td>
                     <td className="px-3 py-1.5 text-slate-700">{r.VendorName}</td>
                     <td className="px-3 py-1.5 text-slate-600">{r.StockInNo}</td>
                     <td className="max-w-xs truncate px-3 py-1.5 text-slate-500" title={r.ItemNames}>{r.ItemNames}</td>

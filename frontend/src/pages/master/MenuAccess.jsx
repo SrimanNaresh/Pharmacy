@@ -179,7 +179,7 @@ export default function MenuAccess() {
           />
 
           {!selectedUser ? (
-            <EmptyState message="Choose a user on the left to configure menu access." />
+            <EmptyState message={<><span className="lg:hidden">Choose a user above</span><span className="hidden lg:inline">Choose a user on the left</span> to configure menu access.</>} />
           ) : loadingAccess ? (
             <Spinner />
           ) : (

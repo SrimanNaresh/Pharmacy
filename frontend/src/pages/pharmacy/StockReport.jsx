@@ -115,16 +115,18 @@ export default function StockReport() {
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
                 <input className="input pl-9" placeholder="Name, code or generic..." value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <select className="input w-auto" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+              <select className="input w-full sm:w-auto" value={category} onChange={(e) => setCategory(e.target.value)}>
                 <option value="">All categories</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-              <select className="input w-auto" value={showWhat} onChange={(e) => setShowWhat(e.target.value)}>
-                <option value="history">Items with stock history</option>
+              <select className="input w-full sm:w-auto" value={showWhat} onChange={(e) => setShowWhat(e.target.value)}>
+                <option value="history">Stock history</option>
                 <option value="instock">In stock only</option>
                 <option value="outofstock">Out of stock</option>
                 <option value="all">All items</option>
               </select>
+              </div>
             </>
           }
         />
@@ -143,7 +145,7 @@ export default function StockReport() {
               <thead>
                 <tr className="table-head">
                   <th className={`${th} rounded-l-lg`}>Item Code</th>
-                  <th className={th}>Item Name</th>
+                  <th className={`${th} min-w-[170px]`}>Item Name</th>
                   <th className={th}>Category</th>
                   <th className={th}>Pack</th>
                   <th className={`${th} text-right`}>Opening</th>

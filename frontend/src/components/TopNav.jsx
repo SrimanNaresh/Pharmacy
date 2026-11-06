@@ -4,9 +4,11 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Pill, ClipboardList, UserPlus, UserCheck,
   FileText, ChevronDown, ChevronRight, Stethoscope, Settings, Receipt, MessageCircle, TestTube, Sparkles, Package, Building2,
-  ShoppingCart, Boxes, Store, PackagePlus, Undo2, BarChart3, Search, X,
+  ShoppingCart, Boxes, Store, PackagePlus, Undo2, BarChart3, Search, X, ChevronLeft, Home, LayoutGrid, Menu, SlidersHorizontal, RotateCcw,
+  List, Wallet, Users, ShieldCheck, Layers, FilePlus,
 } from 'lucide-react';
 import { MENU_GROUPS } from '../config/menuItems.js';
+import { MENU_TONE_OF, MENU_TONES } from '../config/tones.js';
 import { menuAccessApi } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -45,6 +47,9 @@ const SUBMENU_ICONS = {
   'Stock In': PackagePlus,
   Return: Undo2,
   Report: BarChart3,
+  Adjustment: SlidersHorizontal,
+  'Purchase Return': Undo2,
+  'Sales Return': RotateCcw,
 };
 
 // A leaf has `to`; a node has `submenu` (an array of further leaves/nodes,
@@ -580,9 +585,173 @@ export function SideNav() {
   );
 }
 
+// Phones and tablets: a round Menu button in the bottom-right corner (inside
+// the right end of a page's bottom bar when it has one). It opens a panel that
+// starts at the main menus; picking one shows only its child menus, and a
+// child with its own submenu opens the next level. Back goes up one level and
+// Main Menu returns to the top. Picking a page opens it and closes the panel.
+// Each main menu has its own colour, carried down into its child levels; the
+// panel springs out of the button, rows slide in one after another, and levels
+// slide sideways (forward from the right, back from the left).
+// Icons for single pages in the phone menu (by label; lists get a list icon).
+const PAGE_ICONS = {
+  Payments: Wallet, 'Vendor Payments': Wallet, 'Stock Report': BarChart3, 'All in One': LayoutGrid,
+  'Bulk Update': Layers, 'Pharmacy Details': Store, 'User Master': Users, 'Menu Access': ShieldCheck,
+};
+const pageIcon = (label) => PAGE_ICONS[label] || (/list/i.test(label) ? List : FilePlus);
+const childPreview = (nodes) => nodes.map((n) => n.label).join(' · ');
+
+export function MobileMenu() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const menu = useMenu();
+  const [open, setOpen] = useState(false);
+  const [trail, setTrail] = useState([]); // the menus drilled into, top first
+  const [dir, setDir] = useState('fwd'); // which way the last level change went
+  const [bottom, setBottom] = useState(16);
+  const fabRef = useRef(null);
+
+  // Sit in the middle of the right end of a page's bottom bar, if it has one.
+  useEffect(() => {
+    let ro = null;
+    let watched = null;
+    const place = () => {
+      const bar = document.querySelector('[data-phone-footer]');
+      const shown = bar && getComputedStyle(bar).display !== 'none';
+      if (bar !== watched) {
+        ro?.disconnect();
+        ro = bar && window.ResizeObserver ? new ResizeObserver(place) : null;
+        ro?.observe(bar);
+        watched = bar;
+      }
+      const h = fabRef.current?.offsetHeight || 44;
+      setBottom(shown ? Math.max(4, (bar.offsetHeight - h) / 2) : 16);
+    };
+    place();
+    const mo = new MutationObserver(place);
+    mo.observe(document.body, { childList: true });
+    window.addEventListener('resize', place);
+    return () => { mo.disconnect(); ro?.disconnect(); window.removeEventListener('resize', place); };
+  }, []);
+
+  useEffect(() => { setOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const toggle = () => { setTrail([]); setDir('fwd'); setOpen((o) => !o); };
+  const goTo = (next, direction) => { setDir(direction); setTrail(next); };
+  const current = trail[trail.length - 1];
+  const items = current ? (current.children || current.submenu) : menu;
+  const pick = (node) => {
+    if (node.direct) navigate(node.direct);
+    else if (node.children || node.submenu) goTo([...trail, node], 'fwd');
+    else if (node.to) navigate(node.to);
+  };
+  const levelTone = trail[0] ? MENU_TONES[MENU_TONE_OF[trail[0].label] || 'brand'] : null;
+  const HeadIcon = current ? (current.icon || SUBMENU_ICONS[current.label] || trail[0]?.icon || LayoutGrid) : LayoutGrid;
+
+  return createPortal(
+    <div className="no-print lg:hidden">
+      {open && <div className="fixed inset-0 z-40 bg-ink-900/45 backdrop-blur-[3px] menu-fade" onClick={() => setOpen(false)} />}
+
+      {open && (
+        <div
+          className="fixed right-3 z-50 flex max-h-[72vh] w-[min(20.5rem,calc(100vw-1.5rem))] origin-bottom-right flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_60px_-12px_rgba(15,23,42,0.45)] ring-1 ring-black/5 menu-pop"
+          style={{ bottom: bottom + (fabRef.current?.offsetHeight || 44) + 12 }}
+          role="dialog" aria-label="Menu"
+        >
+          {/* Header: gradient with soft rings; title and path change per level. */}
+          <div className="relative overflow-hidden bg-sidebar-gradient px-3.5 pb-3 pt-3 text-white">
+            <span className="pointer-events-none absolute -right-6 -top-10 h-28 w-28 rounded-full bg-white/10" />
+            <span className="pointer-events-none absolute -bottom-12 right-16 h-24 w-24 rounded-full bg-white/5" />
+            <div key={`h${trail.length}`} className="relative flex items-center gap-2.5 menu-title-in">
+              {current ? (
+                <button type="button" onClick={() => goTo(trail.slice(0, -1), 'back')} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 transition-colors hover:bg-white/25 active:scale-95" aria-label="Back" title="Back">
+                  <ChevronLeft size={18} />
+                </button>
+              ) : (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15"><HeadIcon size={17} /></span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-15 font-bold leading-tight tracking-tight">{current ? current.label : 'Main Menu'}</p>
+                <p className="truncate text-11 text-white/70">
+                  {current ? ['Main Menu', ...trail.slice(0, -1).map((t) => t.label)].join(' › ') : `Hi ${user?.username || 'there'} · where to next?`}
+                </p>
+              </div>
+              {current && (
+                <button type="button" onClick={() => goTo([], 'back')} className="flex shrink-0 items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-11 font-bold text-brand-800 shadow-sm transition-transform hover:-translate-y-0.5 active:scale-95" title="Back to the main menu">
+                  <Home size={13} /> Main Menu
+                </button>
+              )}
+            </div>
+            {/* Level dots: where you are in the menu. */}
+            <div className="relative mt-2.5 flex items-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <span key={i} className={`h-1 rounded-full transition-all duration-300 ${i === trail.length ? 'w-5 bg-white' : i < trail.length ? 'w-2 bg-white/70' : 'w-2 bg-white/25'}`} />
+              ))}
+            </div>
+          </div>
+
+          <nav key={trail.map((t) => t.label).join('/') || 'root'} className={`no-scrollbar flex-1 overflow-y-auto p-2 ${dir === 'back' ? 'menu-slide-back' : 'menu-slide-fwd'}`}>
+            {items.map((node, i) => {
+              const drill = !node.direct && !!(node.children || node.submenu);
+              const active = node.direct ? pathname === node.direct : nodeIsActive(node.children ? { submenu: node.children } : node, pathname);
+              const tone = levelTone || MENU_TONES[MENU_TONE_OF[node.label] || 'brand'];
+              const Icon = node.icon || (drill ? SUBMENU_ICONS[node.label] || trail[0]?.icon || ClipboardList : pageIcon(node.label));
+              const kids = drill ? (node.children || node.submenu) : null;
+              return (
+                <button
+                  key={node.label} type="button" onClick={() => pick(node)}
+                  style={{ animationDelay: `${40 + i * 35}ms` }}
+                  className={`group relative flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left transition-colors menu-item-in ${active ? tone.soft : 'hover:bg-ink-50 active:bg-ink-100'}`}
+                >
+                  {active && <span className={`absolute inset-y-2 left-0 w-1 rounded-r-full ${tone.bar}`} />}
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-200 group-hover:scale-105 group-active:scale-95 ${active ? tone.solid : tone.chip}`}>
+                    <Icon size={17} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-sm leading-tight ${active ? `font-bold ${tone.text}` : 'font-semibold text-ink-800'}`}>{node.label}</span>
+                    {kids && <span className="mt-0.5 block truncate text-11 text-ink-400">{childPreview(kids)}</span>}
+                    {!kids && active && <span className={`mt-0.5 block text-11 font-semibold ${tone.text}`}>You are here</span>}
+                  </span>
+                  {kids ? (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <span className="rounded-full bg-ink-100 px-1.5 text-10 font-bold leading-4 text-ink-500">{pageCount(kids)}</span>
+                      <ChevronRight size={16} className="text-ink-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-ink-500" />
+                    </span>
+                  ) : (
+                    <ChevronRight size={15} className={`shrink-0 transition-all duration-200 ${active ? 'text-ink-400' : 'text-transparent group-hover:translate-x-0.5 group-hover:text-ink-300'}`} />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
+      <button
+        ref={fabRef} type="button" onClick={toggle}
+        className={`fixed right-3 z-50 flex h-11 w-11 items-center justify-center rounded-full text-white shadow-[0_8px_20px_-4px_rgba(37,99,235,0.55)] ring-4 ring-white/80 transition-all duration-300 active:scale-90 ${open ? 'bg-ink-800' : 'bg-brand-gradient hover:scale-105'}`}
+        style={{ bottom }}
+        aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} title="Menu"
+      >
+        {!open && <span className="pointer-events-none absolute inset-0 rounded-full bg-brand-400/50 fab-halo" />}
+        <Menu size={20} className={`absolute transition-all duration-300 ${open ? 'rotate-90 scale-50 opacity-0' : 'rotate-0 scale-100 opacity-100'}`} />
+        <X size={20} className={`absolute transition-all duration-300 ${open ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-50 opacity-0'}`} />
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 // `side`: the menu sits in SideNav on desktop, so the top bar is left out
 // there (the mobile dropdown still works as before).
-export default function TopNav({ open, onClose, side = false }) {
+export default function TopNav({ open, side = false }) {
   const { pathname } = useLocation();
   const [openGroup, setOpenGroup] = useState(null);
   const [openRect, setOpenRect] = useState(null);
@@ -627,8 +796,6 @@ export default function TopNav({ open, onClose, side = false }) {
 
   const menu = useMenu();
 
-  // Mobile accordion closes the whole panel on navigate; desktop only closes its dropdown.
-  const handleMobileNavigate = () => onClose();
   const handleDesktopNavigate = () => setOpenGroup(null);
   const openItem = openGroup ? menu.find((m) => m.label === openGroup) : null;
 
@@ -657,19 +824,7 @@ export default function TopNav({ open, onClose, side = false }) {
         <DesktopDropdownPanel item={openItem} pathname={pathname} rect={openRect} panelRef={panelRef} onNavigate={handleDesktopNavigate} />
       )}
 
-      {/* Mobile: dropdown accordion panel */}
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30 bg-ink-900/50 backdrop-blur-sm lg:hidden" onClick={onClose} />
-          <div className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-4rem)] overflow-y-auto bg-sidebar-gradient shadow-2xl animate-fade-in lg:hidden">
-            <nav className="space-y-1 px-3 py-3">
-              {menu.map((item) => (
-                <MobileGroupItem key={item.label} item={item} pathname={pathname} onNavigate={handleMobileNavigate} />
-              ))}
-            </nav>
-          </div>
-        </>
-      )}
+      {/* Phones and tablets use the Menu button in the bottom-right corner (MobileMenu). */}
     </div>
   );
 }

@@ -9,6 +9,27 @@ const AuthContext = createContext(null);
 const initialToken = localStorage.getItem('authToken') || '';
 setAuthToken(initialToken);
 
+// Clears everything this site keeps in the browser (only this app's own data;
+// other sites are untouched). Each step is best-effort so one blocked store
+// never stops the sign-in.
+async function clearAppData() {
+  for (const c of document.cookie.split(';')) {
+    const name = c.split('=')[0].trim();
+    if (!name) continue;
+    const expire = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0`;
+    document.cookie = `${expire}; path=/`;
+    document.cookie = `${expire}; path=/; domain=${location.hostname}`;
+  }
+  try { localStorage.clear(); } catch { /* blocked */ }
+  try { sessionStorage.clear(); } catch { /* blocked */ }
+  try {
+    if (window.caches) await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+  } catch { /* blocked */ }
+  try {
+    if (navigator.serviceWorker) await Promise.all((await navigator.serviceWorker.getRegistrations()).map((r) => r.unregister()));
+  } catch { /* blocked */ }
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(initialToken);
   const [user, setUser] = useState(() => {
@@ -26,13 +47,16 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A successful sign-in starts from a clean slate: this site's cookies,
+  // storage, offline cache and service worker are cleared, the new session is
+  // saved, and the page reloads so the latest version of the app opens.
   const login = useCallback(async (username, password) => {
     const { token: newToken, user: newUser } = await authApi.login(username, password);
-    setAuthToken(newToken); // synchronous, before the re-render mounts any protected routes
+    await clearAppData();
     localStorage.setItem('authToken', newToken);
     localStorage.setItem('authUser', JSON.stringify(newUser));
-    setToken(newToken);
-    setUser(newUser);
+    window.location.replace('/');
+    await new Promise(() => {}); // stay "signing in" until the reload takes over
   }, []);
 
   const logout = useCallback(() => {

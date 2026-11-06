@@ -53,7 +53,7 @@ export function usePhoneFit(deps = [], minArea = 120) {
 // <body>, as a page's fade-in wrapper would otherwise pin it to the page.
 export function PhoneFooter({ footerRef, children }) {
   return createPortal(
-    <div ref={footerRef} className="fixed inset-x-0 bottom-0 z-20 grid auto-cols-fr grid-flow-col gap-2 border-t border-ink-200 bg-white/95 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+    <div ref={footerRef} data-phone-footer className="fixed inset-x-0 bottom-0 z-20 grid auto-cols-fr grid-flow-col gap-2 border-t border-ink-200 bg-white/95 pl-4 pr-[4.25rem] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
       {children}
     </div>,
     document.body,

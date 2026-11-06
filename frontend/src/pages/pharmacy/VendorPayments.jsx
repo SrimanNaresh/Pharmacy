@@ -141,13 +141,15 @@ export default function VendorPayments() {
           title="Vendor Payments"
           subtitle={from || to ? `${from ? dateLabel(from) : 'Start'} – ${to ? dateLabel(to) : 'today'}` : 'All time'}
           actions={
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <label className="text-ink-500">From</label>
-              <input type="date" className="input w-auto" value={from} onChange={(e) => setFrom(e.target.value)} />
-              <label className="text-ink-500">To</label>
-              <input type="date" className="input w-auto" value={to} onChange={(e) => setTo(e.target.value)} />
+            <div className="grid w-full grid-cols-2 items-end gap-2 text-sm sm:flex sm:w-auto sm:items-center">
+              <label className="flex min-w-0 flex-col gap-0.5 text-12 text-ink-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm">
+                From <input type="date" className="input w-full sm:w-auto" value={from} onChange={(e) => setFrom(e.target.value)} />
+              </label>
+              <label className="flex min-w-0 flex-col gap-0.5 text-12 text-ink-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm">
+                To <input type="date" className="input w-full sm:w-auto" value={to} onChange={(e) => setTo(e.target.value)} />
+              </label>
               {(from || to) && (
-                <button type="button" className="btn-ghost px-2 py-1" title="Clear dates" onClick={() => { setFrom(''); setTo(''); }}><X size={15} /></button>
+                <button type="button" className="btn-ghost col-span-2 justify-self-end px-2 py-1 text-12" title="Clear dates" onClick={() => { setFrom(''); setTo(''); }}><X size={15} /> Clear dates</button>
               )}
             </div>
           }

@@ -88,8 +88,8 @@ export default function SalesReturnList() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.SalesReturnId} className="table-row">
-                    <td className="px-3 py-1.5 font-medium text-brand-700">{r.ReturnNo}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{dateLabel(r.ReturnDate)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 font-medium text-brand-700">{r.ReturnNo}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dateLabel(r.ReturnDate)}</td>
                     <td className="px-3 py-1.5 text-slate-700">{r.CustomerName || '-'}</td>
                     <td className="px-3 py-1.5 text-slate-500">{r.MobileNo || '-'}</td>
                     <td className="px-3 py-1.5 text-slate-600" title={`Sold ${dateLabel(r.SaleDate)}`}>{r.SaleNo}</td>

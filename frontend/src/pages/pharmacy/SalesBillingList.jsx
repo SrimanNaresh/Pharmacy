@@ -131,8 +131,8 @@ export default function SalesBillingList() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.SalesBillingId} className="table-row">
-                    <td className="px-3 py-1.5 font-medium text-slate-700">{r.Code}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{dateLabel(r.TransDate)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 font-medium text-slate-700">{r.Code}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dateLabel(r.TransDate)}</td>
                     <td className="px-3 py-1.5 text-slate-600">{r.CustomerName || '-'}</td>
                     <td className="px-3 py-1.5 text-slate-500">{r.MobileNo || '-'}</td>
                     <td className="max-w-xs truncate px-3 py-1.5 text-slate-500" title={r.ItemNames || ''}>{r.ItemNames || '-'}</td>

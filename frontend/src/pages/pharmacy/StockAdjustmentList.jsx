@@ -85,8 +85,8 @@ export default function StockAdjustmentList() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.AdjustmentId} className="table-row">
-                    <td className="px-3 py-1.5 font-medium text-brand-700">{r.AdjNo}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{dateLabel(r.AdjDate)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 font-medium text-brand-700">{r.AdjNo}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dateLabel(r.AdjDate)}</td>
                     <td className="max-w-xs truncate px-3 py-1.5 text-slate-600" title={r.ItemNames}>{r.ItemNames}</td>
                     <td className="max-w-[12rem] truncate px-3 py-1.5 text-slate-500" title={r.Remarks || ''}>{r.Remarks || '-'}</td>
                     <td className="px-3 py-1.5 text-right text-emerald-700">{Number(r.InQty) || '-'}</td>

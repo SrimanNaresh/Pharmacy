@@ -190,19 +190,21 @@ export default function ItemBulkUpdate() {
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
                 <input className="input pl-9" placeholder="Name, code or generic..." value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <select className="input w-auto" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <select className="input w-full sm:w-auto" value={category} onChange={(e) => setCategory(e.target.value)}>
                 <option value="">All categories</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-              <button type="button" className="btn-secondary" onClick={() => download(false)} disabled={!!busy} title="Blank Excel template with the Item Master fields">
-                <FileSpreadsheet size={16} /> {busy === 'template' ? 'Preparing...' : 'Template'}
+              <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
+              <button type="button" className="btn-secondary gap-1.5 px-1.5 text-13 sm:px-4 sm:text-sm" onClick={() => download(false)} disabled={!!busy} title="Blank Excel template with the Item Master fields">
+                <FileSpreadsheet size={16} className="shrink-0" /> {busy === 'template' ? 'Preparing...' : 'Template'}
               </button>
-              <button type="button" className="btn-secondary" onClick={() => download(true)} disabled={!!busy || !rows.length} title="All items in the template layout — edit and upload back">
-                <Download size={16} /> {busy === 'export' ? 'Preparing...' : 'Download items'}
+              <button type="button" className="btn-secondary gap-1.5 px-1.5 text-13 sm:px-4 sm:text-sm" onClick={() => download(true)} disabled={!!busy || !rows.length} title="All items in the template layout — edit and upload back">
+                <Download size={16} className="shrink-0" /> {busy === 'export' ? 'Preparing...' : <>Download<span className="hidden sm:inline"> items</span></>}
               </button>
-              <button type="button" className="btn-primary" onClick={() => fileRef.current?.click()} disabled={!!busy} title="Add / update items from a filled template (.xlsx)">
-                <Upload size={16} /> {busy === 'upload' ? 'Uploading...' : 'Upload'}
+              <button type="button" className="btn-primary gap-1.5 px-1.5 text-13 sm:px-4 sm:text-sm" onClick={() => fileRef.current?.click()} disabled={!!busy} title="Add / update items from a filled template (.xlsx)">
+                <Upload size={16} className="shrink-0" /> {busy === 'upload' ? 'Uploading...' : 'Upload'}
               </button>
+              </div>
               <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={upload} />
               {count > 0 && (
                 <>

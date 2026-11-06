@@ -40,17 +40,32 @@ export const MENU_GROUPS = [
     items: [
       { key: 'pharmacy.stock-inward', label: 'Master', to: '/pharmacy/stock-in' },
       { key: 'pharmacy.stock-inward-list', label: 'List', to: '/pharmacy/stock-in-list' },
-      { key: 'pharmacy.stock-adjustment', label: 'Adjustment', to: '/pharmacy/stock-adjustment' },
-      { key: 'pharmacy.stock-adjustment-list', label: 'Adjustment List', to: '/pharmacy/stock-adjustment-list' },
+      {
+        label: 'Adjustment',
+        submenu: [
+          { key: 'pharmacy.stock-adjustment', label: 'Adjustment Entry', to: '/pharmacy/stock-adjustment' },
+          { key: 'pharmacy.stock-adjustment-list', label: 'Adjustment List', to: '/pharmacy/stock-adjustment-list' },
+        ],
+      },
     ],
   },
   {
     group: 'Return',
     items: [
-      { key: 'pharmacy.purchase-return', label: 'Master', to: '/pharmacy/return' },
-      { key: 'pharmacy.purchase-return-list', label: 'List', to: '/pharmacy/return-list' },
-      { key: 'pharmacy.sales-return', label: 'Sales Return', to: '/pharmacy/sales-return' },
-      { key: 'pharmacy.sales-return-list', label: 'Sales Return List', to: '/pharmacy/sales-return-list' },
+      {
+        label: 'Purchase Return',
+        submenu: [
+          { key: 'pharmacy.purchase-return', label: 'Return Entry', to: '/pharmacy/return' },
+          { key: 'pharmacy.purchase-return-list', label: 'Return List', to: '/pharmacy/return-list' },
+        ],
+      },
+      {
+        label: 'Sales Return',
+        submenu: [
+          { key: 'pharmacy.sales-return', label: 'Sales Return Entry', to: '/pharmacy/sales-return' },
+          { key: 'pharmacy.sales-return-list', label: 'Sales Return List', to: '/pharmacy/sales-return-list' },
+        ],
+      },
     ],
   },
   {

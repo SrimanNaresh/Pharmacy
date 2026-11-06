@@ -28,6 +28,11 @@
   }
   body {
     @apply bg-ink-50 text-ink-800 antialiased;
+    /* A faint brand / teal wash in the corners behind every screen. */
+    background-image:
+      radial-gradient(900px 420px at 100% -10%, rgba(53, 99, 235, 0.07), transparent 70%),
+      radial-gradient(700px 380px at -10% 110%, rgba(23, 163, 148, 0.06), transparent 70%);
+    background-attachment: fixed;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
   * {
@@ -54,10 +59,10 @@
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-brand-300/60 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 hover:shadow-glow active:scale-[0.98];
+    @apply btn bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-[0_1px_2px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.18)] hover:-translate-y-px hover:from-brand-600 hover:to-brand-700 hover:shadow-glow active:translate-y-0 active:scale-[0.98] disabled:hover:translate-y-0;
   }
   .btn-secondary {
-    @apply btn border border-ink-200 bg-white text-ink-700 shadow-sm hover:border-ink-300 hover:bg-ink-50 active:scale-[0.98];
+    @apply btn border border-ink-200 bg-white text-ink-700 shadow-sm hover:-translate-y-px hover:border-brand-200 hover:bg-brand-50/40 hover:text-brand-700 active:translate-y-0 active:scale-[0.98] disabled:hover:translate-y-0;
   }
   .btn-danger {
     @apply btn border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 active:scale-[0.98];
@@ -69,13 +74,13 @@
      textareas still grow; selects and date boxes ignore line height, so the
      minimum is what lines them up with the text boxes. */
   .input {
-    @apply min-h-[30px] w-full rounded-lg border border-ink-200 bg-white px-2.5 py-[3px] text-13 leading-[22px] text-ink-800 shadow-sm transition-colors placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100/70;
+    @apply min-h-[30px] w-full rounded-lg border border-ink-200 bg-white px-2.5 py-[3px] text-13 leading-[22px] text-ink-800 shadow-sm transition-colors placeholder:text-ink-400 hover:border-ink-300 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100/70;
   }
   .label {
     @apply mb-0.5 block text-xs font-medium text-ink-600;
   }
   .card {
-    @apply rounded-2xl border border-ink-100 bg-white px-5 pb-5 pt-3 shadow-card transition-shadow sm:px-6 sm:pb-6 sm:pt-3;
+    @apply rounded-2xl border border-ink-100/80 bg-white px-5 pb-5 pt-3 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_14px_-6px_rgba(15,23,42,0.08)] transition-shadow sm:px-6 sm:pb-6 sm:pt-3;
   }
   .card-hover {
     @apply hover:border-ink-200 hover:shadow-elevated;
@@ -84,10 +89,10 @@
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
   }
   .table-head {
-    @apply border-b border-ink-100 bg-ink-50/60 text-xs font-semibold uppercase tracking-wider text-ink-400;
+    @apply border-b border-ink-200/70 bg-gradient-to-b from-ink-50 to-ink-100/60 text-xs font-bold uppercase tracking-wider text-ink-500;
   }
   .table-row {
-    @apply border-b border-ink-50 transition-colors hover:bg-brand-50/40;
+    @apply border-b border-ink-50 transition-colors hover:bg-brand-50/50;
   }
   .section-title {
     @apply text-xs font-semibold uppercase tracking-wider text-ink-400;
@@ -112,6 +117,15 @@
   .list-pinned > thead > tr > th,
   .list-pinned > tbody > tr > td {
     @apply border-b border-ink-100;
+  }
+  .list-pinned > thead > tr > th {
+    @apply border-ink-200/70 bg-ink-50 font-bold text-ink-500;
+  }
+  .list-pinned > tbody > tr {
+    @apply transition-colors;
+  }
+  .list-pinned > tbody > tr:hover > td {
+    background-color: #f5f8ff;
   }
   .list-pinned.pin-first > thead > tr > :first-child,
   .list-pinned.pin-first > tbody > tr > :first-child,
@@ -170,3 +184,46 @@
   to { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 .menu-drop { animation: menu-down 0.18s ease-out; transform-origin: top; }
+
+/* Phone menu panel grows out of the Menu button in the bottom-right corner. */
+@keyframes menu-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.86); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.menu-pop { animation: menu-pop 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+@keyframes menu-fade { from { opacity: 0; } to { opacity: 1; } }
+.menu-fade { animation: menu-fade 0.2s ease-out both; }
+/* Rows arrive one after another (each row sets its own delay). */
+@keyframes menu-item-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.menu-item-in { animation: menu-item-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Going into a menu slides the level in from the right; going back, from the left. */
+@keyframes menu-slide-fwd { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes menu-slide-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.menu-slide-fwd { animation: menu-slide-fwd 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.menu-slide-back { animation: menu-slide-back 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes menu-title-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.menu-title-in { animation: menu-title-in 0.25s ease-out both; }
+/* A soft halo that pulses a few times so the Menu button is noticed. */
+@keyframes fab-halo {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+.fab-halo { animation: fab-halo 1.8s ease-out 0.6s 3 both; }
+@media (prefers-reduced-motion: reduce) {
+  .menu-pop, .menu-fade, .menu-item-in, .menu-slide-fwd, .menu-slide-back, .menu-title-in, .fab-halo { animation: none !important; }
+}
+
+/* Room under the last thing on a page so the phone Menu button never covers
+   it; pages with a bottom bar carry the button inside the bar instead. */
+body:has([data-phone-footer]) [data-fab-spacer] { display: none; }
+
+/* Toast messages drop in. */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.toast-in { animation: toast-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .toast-in { animation: none !important; } }

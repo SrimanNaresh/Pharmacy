@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Menu, LogOut, ChevronDown } from 'lucide-react';
-import TopNav, { SideNav } from './components/TopNav.jsx';
+import TopNav, { SideNav, MobileMenu } from './components/TopNav.jsx';
 import { clinicApi } from './api/client.js';
 import { useAuth } from './context/AuthContext.jsx';
 import { useAppName } from './hooks/useAppName.js';
@@ -100,15 +100,20 @@ function AppLayout({ appName }) {
         <header className="relative z-10 flex items-center gap-3 border-b border-ink-100 bg-white/85 px-4 py-0.5 backdrop-blur-md lg:px-6">
           <button
             onClick={toggleMenu}
-            className={`rounded-lg p-1 transition-colors hover:bg-ink-100 ${navSide ? 'bg-ink-100 text-brand-700' : 'text-ink-600'}`}
+            className={`hidden rounded-lg p-1 transition-colors hover:bg-ink-100 lg:block ${navSide ? 'bg-ink-100 text-brand-700' : 'text-ink-600'}`}
             aria-label="Toggle menu"
             title={navSide ? 'Move menu to the top' : 'Move menu to the left'}
           >
             <Menu size={18} />
           </button>
-          <div className="flex min-w-0 flex-1 items-baseline gap-2">
-            <p className="truncate font-display text-base font-bold tracking-tight text-brand-800 sm:text-lg">{clinicName || appName}</p>
-            <p className="hidden truncate text-xs text-ink-300 md:block">Pharmacy management</p>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-ink-100">
+              <img src="/pwa-192x192.png" alt="" className="h-full w-full object-contain" />
+            </span>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <p className="truncate font-display text-base font-bold tracking-tight text-brand-800 sm:text-lg">{clinicName || appName}</p>
+              <p className="hidden truncate text-xs text-ink-300 md:block">Pharmacy management</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-1.5 rounded-full border border-ink-100 bg-ink-50 px-2.5 py-0.5 text-11 text-ink-400 sm:flex">
@@ -118,8 +123,9 @@ function AppLayout({ appName }) {
           </div>
         </header>
 
-        <TopNav open={navOpen} onClose={() => setNavOpen(false)} side={navSide} />
+        <TopNav open={navOpen} side={navSide} />
       </div>
+      <MobileMenu />
 
       <div className="flex min-h-0 flex-1">
         {navSide && <SideNav />}
@@ -154,6 +160,7 @@ function AppLayout({ appName }) {
                 <Route path="/pharmacy/all-in-one-report" element={<AllInOneReport />} />
               </Routes>
           </div>
+          <div data-fab-spacer className="h-14 lg:hidden" />
         </main>
       </div>
     </div>

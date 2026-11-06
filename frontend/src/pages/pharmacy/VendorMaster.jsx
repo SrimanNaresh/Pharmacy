@@ -167,14 +167,14 @@ export default function VendorMaster() {
             </div>
           </div>
 
-          <div className="mt-3 flex justify-end gap-2">
-            <button type="button" className="btn-secondary" onClick={cancel}>
+          <div className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:justify-end">
+            <button type="button" className="btn-secondary px-2 sm:px-4" onClick={cancel}>
               <X size={16} /> Cancel
             </button>
-            <button type="button" className="btn-danger" onClick={remove} disabled={!editingId} title={editingId ? 'Delete this vendor' : 'Open a vendor from Vendor List to delete it'}>
+            <button type="button" className="btn-danger px-2 sm:px-4" onClick={remove} disabled={!editingId} title={editingId ? 'Delete this vendor' : 'Open a vendor from Vendor List to delete it'}>
               <Trash2 size={16} /> Delete
             </button>
-            <button type="submit" className="btn-primary" disabled={saving}>
+            <button type="submit" className="btn-primary px-2 sm:px-4" disabled={saving}>
               <Save size={16} /> {saving ? 'Saving...' : 'Save'}
             </button>
           </div>

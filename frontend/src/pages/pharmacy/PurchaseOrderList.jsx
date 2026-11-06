@@ -94,8 +94,8 @@ export default function PurchaseOrderList() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.PurchaseOrderId} className="table-row">
-                    <td className="px-3 py-1.5 font-medium text-brand-700">{r.OrderNo}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{dateLabel(r.OrderDate)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 font-medium text-brand-700">{r.OrderNo}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dateLabel(r.OrderDate)}</td>
                     <td className="px-3 py-1.5 text-slate-700">{r.VendorName}</td>
                     <td className="px-3 py-1.5 text-right text-slate-600">{r.Items}</td>
                     <td className="px-3 py-1.5 text-right font-semibold text-slate-800">{money(r.TotalAmount)}</td>
