@@ -83,6 +83,9 @@ export default function PurchaseOrder() {
   // before "Add to list" puts it into `lines`.
   const [draft, setDraft] = useState(emptyLine);
   const draftRef = useRef(null);
+  // Phones: which tab shows — the entry form ('new') or the order's items ('items').
+  const [poTab, setPoTab] = useState('new');
+  const bulkRef = useRef(null);
   // Round Off: rounds the Sum of Total to the nearest rupee (on for a new order).
   const [roundOn, setRoundOn] = useState(true);
   const [showOptional, setShowOptional] = useState(false);
@@ -129,6 +132,7 @@ export default function PurchaseOrder() {
       setOrderDate(String(o.OrderDate).slice(0, 10));
       setRoundOn(Number(o.RoundOff) !== 0);
       setDraft(emptyLine());
+      setPoTab('items');
       setLines(o.lines.map((l) => ({
         ...emptyLine(), lineId: l.LineId, itemId: String(l.ItemId), generic: l.GenericName || '', manufacturer: l.Manufacturer || '',
         hsn: l.HSNCode || '', category: l.Category || '', pack: l.Pack || '', unit: l.Unit || '', mrp: numStr(l.MRP), pRate: numStr(l.PRate),
@@ -180,13 +184,15 @@ export default function PurchaseOrder() {
     setLines((ls) => (draftEditing
       ? ls.map((l) => (l.key === draft.key ? draft : l))
       : [...ls.filter((l) => l.itemId), draft]));
-    show(draftEditing ? 'Item updated' : 'Item added to the list', 'success');
+    show(draftEditing ? 'Item updated' : `Item added — ${filled.length + 1} in the order`, 'success');
     setDraft(emptyLine());
-    setTimeout(() => draftRef.current?.querySelector('input')?.focus(), 50);
+    // After an edit go back to the list; after adding stay on New Item for the next one.
+    if (draftEditing) setPoTab('items');
+    else setTimeout(() => draftRef.current?.querySelector('input')?.focus(), 50);
   };
   const editLine = (l) => {
     setDraft({ ...l });
-    draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setPoTab('new');
   };
   const deleteLine = (l) => {
     if (!confirm(`Remove ${itemById.get(l.itemId)?.Name || 'this item'} from the order?`)) return;
@@ -244,6 +250,10 @@ export default function PurchaseOrder() {
   });
 
   // Bulk add panel.
+  const toggleBulk = () => {
+    setBulk((b) => (b ? null : { search: '', category: '', manufacturer: '', ticked: new Set() }));
+    setTimeout(() => bulkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
   const inTable = useMemo(() => new Set(lines.map((l) => l.itemId).filter(Boolean)), [lines]);
   const bulkCategories = useMemo(() => [...new Set(items.map((i) => i.Category).filter(Boolean))].sort(), [items]);
   const bulkManufacturers = useMemo(() => [...new Set(items.map((i) => i.ManufacturerName).filter(Boolean))].sort(), [items]);
@@ -280,7 +290,7 @@ export default function PurchaseOrder() {
   const netAmount = total + roundOff;
 
   const reset = () => {
-    setEditing(null); setVendorId(''); setDetails(''); setShowDetails(false); setOrderDate(today()); setLines([emptyLine()]); setDraft(emptyLine()); setRoundOn(true);
+    setEditing(null); setVendorId(''); setDetails(''); setShowDetails(false); setOrderDate(today()); setLines([emptyLine()]); setDraft(emptyLine()); setPoTab('new'); setRoundOn(true);
   };
 
   const save = async (e) => {
@@ -333,7 +343,7 @@ export default function PurchaseOrder() {
             title={editing ? `Edit Order · ${editing.no}` : 'Purchase / Order'}
             subtitle={editing ? 'Update this order' : 'Order items from a vendor — this does not change stock'}
             actions={
-              <button type="button" className="btn-secondary" onClick={() => navigate('/pharmacy/purchase-order-list')}>
+              <button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/purchase-order-list')}>
                 <List size={16} /> View List
               </button>
             }
@@ -385,15 +395,15 @@ export default function PurchaseOrder() {
             </div>
           )}
 
-          <div className="mt-3 flex items-center justify-between">
-            <button type="button" className="btn-secondary whitespace-nowrap py-1" onClick={() => setBulk(bulk ? null : { search: '', category: '', manufacturer: '', ticked: new Set() })}>
+          <div className="mt-3 hidden items-center justify-between md:flex">
+            <button type="button" className="btn-secondary whitespace-nowrap py-1" onClick={toggleBulk}>
               <ListPlus size={15} /> Bulk add items
             </button>
             <span className="hidden text-xs text-ink-400 md:inline">← → move between boxes · ↑ ↓ move between rows</span>
           </div>
 
           {bulk && (
-            <div className="mt-2 rounded-lg border border-ink-200 bg-ink-50/50 p-2">
+            <div ref={bulkRef} className="mt-2 scroll-mt-4 rounded-lg border border-ink-200 bg-ink-50/50 p-2">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative w-full sm:w-56">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
@@ -432,9 +442,27 @@ export default function PurchaseOrder() {
             </div>
           )}
 
-          {/* Phones: an entry form for one item ("Add to list" moves it into the list
-              below and clears the form), the list with Edit / Delete, then the totals. */}
+          {/* Phones: two tabs — New Item (the entry form; "Add to list" moves the item
+              into the order and clears the form) and Order Items (the list with Edit /
+              Delete) — then the totals. */}
           <div className="mt-3 space-y-2.5 md:hidden">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-ink-100 p-1">
+              <button
+                type="button" onClick={() => setPoTab('new')}
+                className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'new' ? (draftEditing ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-brand-700 shadow-sm') : 'text-ink-500'}`}
+              >
+                {draftEditing ? <Pencil size={14} /> : <Plus size={14} />} {draftEditing ? 'Edit Item' : 'New Item'}
+              </button>
+              <button
+                type="button" onClick={() => setPoTab('items')}
+                className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors ${poTab === 'items' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500'}`}
+              >
+                <List size={14} /> Order Items
+                <span className={`rounded-full px-1.5 text-[11px] ${filled.length ? 'bg-brand-600 text-white' : 'bg-ink-200 text-ink-500'}`}>{filled.length}</span>
+              </button>
+            </div>
+
+            <div className={poTab === 'new' ? '' : 'hidden'}>
             {(() => {
               const l = draft;
               const c = calcOf(l);
@@ -511,13 +539,14 @@ export default function PurchaseOrder() {
                 </div>
               );
             })()}
+            </div>
 
-            <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-ink-100 bg-ink-50 px-3 py-2">
-                <span className="text-[13px] font-semibold text-ink-700">Order items</span>
-                <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700">{filled.length}</span>
-              </div>
-              {filled.length === 0 && <p className="px-3 py-4 text-center text-[12px] text-ink-400">No items yet — add them above.</p>}
+            <div className={`overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm ${poTab === 'items' ? '' : 'hidden'}`}>
+              {filled.length === 0 && (
+                <p className="px-3 py-5 text-center text-[12px] text-ink-400">
+                  No items yet — add them on the <button type="button" className="font-semibold text-brand-700" onClick={() => setPoTab('new')}>New Item</button> tab.
+                </p>
+              )}
               {filled.map((l, i) => {
                 const c = calcOf(l);
                 const bad = problems.get(l.key);
@@ -679,6 +708,16 @@ export default function PurchaseOrder() {
             </button>
           </div>
         </form>
+      </div>
+      {/* Phones: Bulk add items and View List stay in a bar at the bottom of the
+          screen while the page scrolls above it. */}
+      <div className="sticky bottom-[-12px] z-10 -mx-4 -mb-4 mt-3 grid grid-cols-2 gap-2 border-t border-ink-200 bg-white/95 px-4 py-2 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+        <button type="button" className={`${bulk ? 'btn-primary' : 'btn-secondary'} whitespace-nowrap px-2`} onClick={toggleBulk}>
+          <ListPlus size={16} /> {bulk ? 'Close bulk add' : 'Bulk add items'}
+        </button>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2" onClick={() => navigate('/pharmacy/purchase-order-list')}>
+          <List size={16} /> View List
+        </button>
       </div>
       <ItemFormModal target={itemForm} onClose={() => { focusItemBox(itemForm.rowKey); setItemForm(null); }} onSaved={itemSaved} />
       <Toast toast={toast} />
