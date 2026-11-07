@@ -268,15 +268,15 @@ function headerColumns(words) {
     for (let n = Math.min(3, ws.length - i); n >= 1 && !hit; n -= 1) {
       const part = ws.slice(i, i + n);
       const field = headingOf(part.map((w) => headKey(w.t)).join(''));
-      if (field) hit = { field, x: part[0].x, x1: part[n - 1].x1, n };
+      if (field) hit = { field, x: part[0].x, x1: part[n - 1].x1, n, t: part.map((w) => w.t).join(' ') };
     }
     if (hit) { if (hit.field === '_') hit.field = null; cols.push(hit); i += hit.n; continue; }
     const w = ws[i];
     const prev = cols[cols.length - 1];
     // A heading word OCR didn't recognise, right after a heading ("Item Descripti0n"),
     // belongs to it; on its own it's another column (Qty, Exp, Rate...).
-    if (prev && w.x - prev.x1 < PHRASE_GAP) prev.x1 = w.x1;
-    else cols.push({ field: null, x: w.x, x1: w.x1, n: 1 });
+    if (prev && w.x - prev.x1 < PHRASE_GAP) { prev.x1 = w.x1; prev.t = `${prev.t} ${w.t}`; }
+    else cols.push({ field: null, x: w.x, x1: w.x1, n: 1, t: w.t });
     i += 1;
   }
   const known = cols.filter((c) => c.field);
@@ -361,7 +361,7 @@ function rowCells(line, gap) {
   return cells;
 }
 
-function extractByContent(layout) {
+function extractByContent(layout, raw = false) {
   const lines = layout.map((l) => l.filter((w) => w.x != null && w.x1 != null)).filter((l) => l.length);
   // Width of one letter, from the words on lines that look like item rows
   // (the bill's big header print would make it too wide): gaps under ~0.8
@@ -429,6 +429,22 @@ function extractByContent(layout) {
   // The Rate column after MRP: an MRP below the rate lost digits in OCR
   // ("1:50" for 111.50) — better left empty to fill in than saved wrong.
   const rateCol = mrpCol && right.slice(right.indexOf(mrpCol) + 1).find((col) => !field.has(col) && priceCol(col));
+
+  // The table as read, every column, for the column-matching preview.
+  if (raw) {
+    const heads = real.map((col, i) => {
+      const f = col === nameCol ? 'name' : field.get(col);
+      return { label: col === rateCol ? 'Rate' : FIELD_LABEL[f] || `Column ${i + 1}`, field: f && f !== 'exp' ? f : null };
+    });
+    const table = [];
+    for (const cells of rows) {
+      const inCol = (col) => cells.filter((c) => c.x < col.x1 && c.x1 > col.x);
+      const hit = parseItemLine(inCol(nameCol).flatMap((c) => c.words).flatMap((w) => splitGlued(w.t).split(' ').map((t) => ({ t, x: w.x }))), 0, null, false);
+      if (!hit) continue;
+      table.push(real.map((col) => (col === nameCol ? hit.name : words(inCol(col).flatMap((c) => c.words)).join(' '))));
+    }
+    return table.length ? { heads, rows: table } : null;
+  }
 
   const out = [];
   const seen = new Set();
@@ -513,6 +529,56 @@ export function extractBillRows(layout) {
   // No readable header (or nothing under it): find the columns from the rows.
   if (!cols || !out.length) return extractByContent(layout);
   return { fields: BILL_FIELDS.filter((f) => found.has(f)), rows: out };
+}
+
+// The bill's item table as read, every column kept, for the column-matching
+// preview: { heads: [{ label: the bill's heading, field: BILL_FIELDS name | null }],
+// rows: [[cell text, one per head]] }, or null. The Item Description cell is
+// the cleaned name; a name wrapped onto a second line ("CAPSICUM ANNUUM" /
+// "30C 100ML") is joined back up.
+const FIELD_LABEL = {
+  name: 'Item Description', hsnCode: 'HSN', rack: 'Rack', manufacturer: 'MFR', category: 'Batch', pack: 'Pack', mrp: 'MRP', qty: 'Qty', exp: 'Exp',
+};
+const NOT_WRAP = /\b(total|grand|amount|taxable|net|value|words|remarks)\b/i;
+export function extractBillTable(layout) {
+  if (!layout) return null;
+  let cols = null;
+  const rows = [];
+  let last = null;
+  for (const line of layout) {
+    const head = headerColumns(line);
+    if (head) { if (!cols) cols = head; last = null; continue; }
+    if (!cols || !line.length) continue;
+    const by = new Map(cols.map((c) => [c, []]));
+    for (const w of line) by.get(columnAt(cols, w)).push(w);
+    const nameCol = cols.find((c) => c.field === 'name');
+    const nameWs = by.get(nameCol);
+    const figures = cols.filter((c) => c !== nameCol).reduce((n, c) => n + by.get(c).filter((w) => /\d/.test(w.t)).length, 0);
+    if (figures < 2) {
+      // Only a few words, all under Item Description, right after an item: the rest of its name.
+      const more = words(nameWs).join(' ').toUpperCase();
+      if (last && nameWs.length === line.length && nameWs.length <= 4 && /[A-Z0-9]/.test(more) && !NOT_WRAP.test(more)) {
+        last[cols.indexOf(nameCol)] += ` ${more}`;
+      } else last = null;
+      continue;
+    }
+    const hit = parseItemLine(nameWs, 0, null, false);
+    if (!hit) { last = null; continue; }
+    last = cols.map((c) => (c === nameCol ? hit.name : words(by.get(c)).join(' ')));
+    const packCol = cols.findIndex((c) => c.field === 'pack');
+    if (packCol >= 0 && !last[packCol] && hit.pack) last[packCol] = hit.pack;
+    rows.push(last);
+  }
+  if (!cols || !rows.length) return extractByContent(layout, true);
+  // Leave out columns with nothing in them (stray heading words), and repeated lines.
+  const keep = cols.map((c, i) => c.field === 'name' || rows.some((r) => r[i]));
+  const seen = new Set();
+  const nameAt = cols.findIndex((c) => c.field === 'name');
+  const unique = rows.filter((r) => { const k = compact(r[nameAt]); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  return {
+    heads: cols.map((c, i) => ({ label: cleanLine(c.t || '') || FIELD_LABEL[c.field] || `Column ${i + 1}`, field: c.field })).filter((_, i) => keep[i]),
+    rows: unique.map((r) => r.filter((_, i) => keep[i])),
+  };
 }
 
 // --- Supplier and bill date (top of the bill) ------------------------------

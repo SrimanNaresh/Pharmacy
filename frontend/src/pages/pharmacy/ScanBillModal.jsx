@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera, FileUp, ScanLine, Plus, Trash2, RotateCcw, RotateCw,
-  ChevronLeft, ChevronRight, Crop, ArrowLeft, Sparkles, ZoomIn, ZoomOut, Hand, SquareDashedMousePointer,
+  ChevronLeft, ChevronRight, Crop, ArrowLeft, Sparkles, ZoomIn, ZoomOut, Hand, SquareDashedMousePointer, X,
+  GripVertical, Eraser, Check,
 } from 'lucide-react';
 import { Modal } from '../../components/ui.jsx';
 import { itemMasterApi } from '../../api/client.js';
 import { emptyForm } from './ItemForm.jsx';
-import { BILL_FIELDS, buildIndex, compact, extractBillHeader, extractBillRows, extractItems, matchName } from '../../utils/billScan.js';
+import { BILL_FIELDS, buildIndex, compact, extractBillHeader, extractBillRows, extractBillTable, extractItems, matchName } from '../../utils/billScan.js';
 import { gridKeys } from '../../components/grid/gridKeys.js';
 
 // Item Master > Scan Bill: add a supplier bill's new items to Item Master.
@@ -28,13 +29,19 @@ import { gridKeys } from '../../components/grid/gridKeys.js';
 // Each tab is a grid like the Purchase Order item grid. A Manufacturer or
 // Category that isn't on its pick-list yet is added to it on save.
 //
-// forOrder (Purchase Order > Scan Bill): the bill's qty column is read too,
-// and the last button adds the new items to Item Master and then puts every
-// bill item on the order — new ones, matched ones and existing ones — with
-// the bill's Qty and MRP, through onLines([{ itemId, qty, mrp }]).
+// forOrder (Purchase Order > Scan Bill): after reading, a Match columns step
+// shows the bill's table as read (its own headings and values) above the
+// order's header row. Drag a bill heading onto an order heading (or tap one,
+// then the other) to say which bill column fills it; headings that clearly
+// match are filled in already. The last button adds the new items to Item
+// Master and then puts every bill item on the order — new ones, matched ones
+// and existing ones — with the bill's MRP, P.Rate, Free, Disc %, Qty and GST %,
+// through onLines([{ itemId, qty, mrp, pRate, free, disc, gst }]).
 
 let nextId = 1;
-const blankFields = { hsnCode: '', rack: '', manufacturer: '', category: '', pack: '', mrp: '', qty: '' };
+const blankFields = { hsnCode: '', rack: '', manufacturer: '', category: '', pack: '', mrp: '', pRate: '', free: '', disc: '', qty: '', gst: '' };
+// Order fields typed as numbers, and the ones the matched / existing tabs can change.
+const NUMERIC = new Set(['mrp', 'pRate', 'free', 'disc', 'qty', 'gst']);
 const newRow = (fields) => ({ id: nextId++, ...blankFields, ...fields, include: true, choice: null, result: null });
 // The grid's bill columns after Item Name: [field, heading, width class, max length]
 const COLS = [
@@ -48,19 +55,83 @@ const COLS = [
 const BILL_HEADING = {
   name: 'Item Description', hsnCode: 'HSNCODE', rack: 'Rack', manufacturer: 'MFR', category: 'Batch', pack: 'Pack', mrp: 'MRP', qty: 'qty',
 };
-const QTY_COL = ['qty', 'Qty', 'w-[7%]', null];
+const ORDER_COLS = [
+  ['pRate', 'P.Rate', 'w-[7%]', null],
+  ['free', 'Free', 'w-[5%]', null],
+  ['disc', 'Disc%', 'w-[5%]', null],
+  ['qty', 'Qty', 'w-[6%]', null],
+  ['gst', 'GST%', 'w-[5%]', null],
+];
+
+// Match columns: the Purchase Order's header row, in its order on screen.
+// [key, heading, width px, auto] — auto columns come from Item Master or are
+// worked out on the order, so nothing is dropped on them. Manufacturer, HSN and
+// Rack are saved on new items in Item Master.
+const TARGETS = [
+  ['name', 'Item Name', 200], ['category', 'Category', 100], ['pack', 'Pack', 70], ['unit', 'Unit', 60, 'From Item Master'],
+  ['mrp', 'MRP', 75], ['oldPrice', 'Old Price', 75, 'Last rate from the vendor, shown on the order'], ['pRate', 'P.Rate', 75],
+  ['free', 'Free', 60], ['disc', 'Disc%', 60], ['qty', 'Qty', 60], ['amount', 'Amount', 80, 'Worked out on the order'],
+  ['gst', 'GST%', 60], ['cgst', 'CGST%', 65], ['sgst', 'SGST%', 65], ['gstAmt', 'GST Amt', 75, 'Worked out on the order'],
+  ['total', 'Total', 80, 'Worked out on the order'],
+  ['manufacturer', 'Manufacturer', 120], ['hsnCode', 'HSN', 85], ['rack', 'Rack', 65],
+];
+const headKey = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+// A bill heading the reader didn't name, by its words: "Rate" -> P.Rate, "GST %" -> GST%...
+const BY_LABEL = [
+  ['cgst', (k) => k.startsWith('cgst') && !/amt|amount|value/.test(k)],
+  ['sgst', (k) => k.startsWith('sgst') && !/amt|amount|value/.test(k)],
+  ['gst', (k) => /^(gst|igst|tax)/.test(k) && !/amt|amount|value|able/.test(k)],
+  ['free', (k) => k.startsWith('free') || k === 'fr'],
+  ['disc', (k) => /^(disc|dis|discount|cd|sch)/.test(k) && !/amt|amount/.test(k)],
+  ['pRate', (k) => /^(rate|prate|ptr|pts|purrate|purchaserate|netrate|price)$/.test(k)],
+];
+function autoMap(heads) {
+  const map = {};
+  heads.forEach((h, i) => {
+    const key = h.field || BY_LABEL.find(([, test]) => test(headKey(h.label)))?.[0];
+    if (key && map[key] == null) map[key] = i;
+  });
+  return map;
+}
+// A bill cell as the value for an order column.
+const numIn = (t, last = false) => {
+  const s = String(t || '').replace(/(?<=\d)[oO]|[oO](?=\d)/g, '0').replace(/(\d),(\d{1,2})(?!\d)/g, '$1.$2').replace(/,/g, '');
+  const all = s.match(/\d+(\.\d+)?/g);
+  return all ? String(Number(all[last ? all.length - 1 : 0])) : '';
+};
+function valueFor(key, text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (key === 'mrp') return numIn(t, true);
+  if (NUMERIC.has(key) || key === 'cgst' || key === 'sgst') return numIn(t);
+  if (key === 'hsnCode') return t.replace(/[oO]/g, '0').replace(/\D/g, '').slice(0, 30);
+  if (key === 'category') return t.replace(/ /g, '').toUpperCase().slice(0, 100);
+  const max = { name: 200, manufacturer: 200, pack: 50, rack: 50 }[key] || 100;
+  return t.toUpperCase().slice(0, max);
+}
+// One bill line through the column matches -> the fields of a scanned row.
+function fieldsOf(cells, map) {
+  const o = {};
+  for (const [key, , , auto] of TARGETS) if (!auto && map[key] != null) o[key] = valueFor(key, cells[map[key]]);
+  if (o.gst == null && (o.cgst || o.sgst)) o.gst = String(Math.round((Number(o.cgst || 0) + Number(o.sgst || 0)) * 100) / 100);
+  delete o.cgst; delete o.sgst;
+  return o;
+}
 const NEW = 'new';
 const code = (it) => it.ItemCode || `ITM${String(it.ItemId).padStart(6, '0')}`;
 const MIN_BOX = 0.02; // a selection smaller than this (share of the page) is a slip, not a box
 
 export default function ScanBillModal({ open, onClose, onAdded, forOrder = false, onLines }) {
   // Item Master's scan reads names only; a Purchase Order's also reads the bill's columns.
-  const cols = forOrder ? [...COLS, QTY_COL] : [];
+  const cols = forOrder ? [...COLS, ...ORDER_COLS] : [];
   const [items, setItems] = useState([]);
   // Matching needs the item list: until it's loaded nothing can be read or
   // added, or every line would look new.
   const [itemsReady, setItemsReady] = useState(false);
-  const [step, setStep] = useState('pick'); // pick | select | review
+  const [step, setStep] = useState('pick'); // pick | select | map (orders) | review
+  // Match columns (orders): the bill's table as read, and which bill column
+  // fills each order column { targetKey: head index }.
+  const [table, setTable] = useState(null);
+  const [colMap, setColMap] = useState({});
   const [fileName, setFileName] = useState('');
   const [pages, setPages] = useState([]); // page pictures (canvases), turned upright
   const [pageNo, setPageNo] = useState(0);
@@ -85,7 +156,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
 
   const reset = () => {
     setStep('pick'); setFileName(''); setPages([]); setPageNo(0); setBox(null); setZoom(1); setMoving(false); setRows([]); setTab('new');
-    setRawText(''); setError(''); setSummary(''); setBusy(null); setSupplier(null);
+    setRawText(''); setError(''); setSummary(''); setBusy(null); setSupplier(null); setTable(null); setColMap({});
   };
 
   useEffect(() => {
@@ -203,6 +274,14 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
         }
       }
       setRawText((t) => (t ? `${t}\n\n` : '') + text.trim());
+      // An order: show the table as read, to match its columns to the order's.
+      const billTable = forOrder ? extractBillTable(layout) : null;
+      if (billTable?.rows.length) {
+        setTable(billTable);
+        setColMap(autoMap(billTable.heads));
+        setStep('map');
+        return;
+      }
       // With the header row in the area every column is read; without it,
       // just the item names.
       const table = extractBillRows(layout);
@@ -231,6 +310,24 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
     }
   };
 
+  // 2b. (Orders) The columns are matched: the bill's lines go to the list.
+  const applyColumns = () => {
+    const have = new Set(rows.map((r) => compact(r.name)));
+    const added = [];
+    for (const cells of table.rows) {
+      const f = fieldsOf(cells, colMap);
+      const k = compact(f.name);
+      if (!k || have.has(k)) continue;
+      have.add(k);
+      added.push(newRow(f));
+    }
+    setRows((rs) => [...rs, ...added]);
+    setTab('new');
+    setStep('review');
+    setError('');
+    setSummary(rows.length ? `${added.length} more line${added.length === 1 ? '' : 's'} read from the bill.` : '');
+  };
+
   // 3. Save the new items.
   const addItems = async () => {
     const todo = view.filter((v) => v.willAdd);
@@ -245,7 +342,13 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
     // For an order: every bill line that goes on it (the new ones once added).
     const forLines = forOrder ? view.filter((v) => v.include && v.status !== 'dup' && v.status !== 'empty') : [];
     for (const v of forLines) {
-      if (String(v.qty).trim() !== '' && !(Number(v.qty) > 0)) return setError(`"${v.name.slice(0, 30)}": Qty must be more than 0`);
+      const label = `"${v.name.slice(0, 30)}"`;
+      const set = (f) => String(v[f]).trim() !== '';
+      if (set('qty') && !(Number(v.qty) > 0)) return setError(`${label}: Qty must be more than 0`);
+      if (set('pRate') && !(Number(v.pRate) >= 0)) return setError(`${label}: P.Rate must be a number, 0 or more`);
+      if (set('free') && !(Number(v.free) >= 0)) return setError(`${label}: Free must be a number, 0 or more`);
+      if (set('disc') && !(Number(v.disc) >= 0 && Number(v.disc) <= 100)) return setError(`${label}: Disc % must be 0–100`);
+      if (set('gst') && !(Number(v.gst) >= 0 && Number(v.gst) <= 100)) return setError(`${label}: GST % must be 0–100`);
     }
     setSaving(true); setError(''); setSummary('');
     // Manufacturer and Category must be on their pick-lists: add the bill's
@@ -310,7 +413,8 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
         if (!itemId && v.status === 'similar' && v.choice !== NEW) itemId = v.choice;
         if (!itemId) continue;
         if (byId.get(itemId)?.Status === 'Inactive') { inactive += 1; continue; }
-        lines.push({ itemId, qty: String(v.qty).trim(), mrp: String(v.mrp).trim() });
+        const s = (f) => String(v[f]).trim();
+        lines.push({ itemId, qty: s('qty'), mrp: s('mrp'), pRate: s('pRate'), free: s('free'), disc: s('disc'), gst: s('gst') });
       }
       onLines?.(lines, { added: ok, inactive, supplier });
       return;
@@ -331,7 +435,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
         <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
         <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" className="hidden" onChange={onFile} />
 
-        <Steps step={step} />
+        <Steps step={step} forOrder={forOrder} />
 
         {/* Step 1: pick the bill */}
         {step === 'pick' && !busy && (
@@ -403,6 +507,11 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
+                {box && (
+                  <button type="button" className="btn-secondary" disabled={working} onClick={() => setBox(null)} title="Clear the selected area">
+                    <X size={16} /> Cancel Selection
+                  </button>
+                )}
                 <button type="button" className="btn-secondary" disabled={working} onClick={() => read(true)} title="Read the whole page and pick out the item lines">
                   <Sparkles size={16} /> Read Whole Page
                 </button>
@@ -412,6 +521,19 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
               </div>
             </div>
           </div>
+        )}
+
+        {/* Step 2b (orders): match the bill's columns to the order's */}
+        {step === 'map' && table && (
+          <ColumnMatch
+            table={table}
+            map={colMap}
+            setMap={setColMap}
+            disabled={working}
+            onBack={() => setStep('select')}
+            onDone={applyColumns}
+            hasRows={rows.length > 0}
+          />
         )}
 
         {/* Step 3: the items, in tabs */}
@@ -500,8 +622,8 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
   );
 }
 
-function Steps({ step }) {
-  const all = [['pick', 'Upload'], ['select', 'Select table'], ['review', 'Review & add']];
+function Steps({ step, forOrder }) {
+  const all = [['pick', 'Upload'], ['select', 'Select table'], ...(forOrder ? [['map', 'Match columns']] : []), ['review', 'Review & add']];
   const at = all.findIndex(([k]) => k === step);
   return (
     <ol className="flex items-center gap-2 text-[11px] font-semibold">
@@ -598,6 +720,163 @@ function BoxSelect({ page, box, onBox, disabled, zoom = 1, moving = false, forOr
   );
 }
 
+// Match columns (orders). Top: the bill's table as read, values only — each
+// column's heading is a slot for the order column it fills. Below: the
+// Purchase Order's headings as tiles. Drag a tile onto a column (or tap the
+// tile, then the column — or the column, then the tile — for a phone). A
+// column holds one tile and a tile sits on one column; dropping a tile that's
+// already placed moves it. Tiles that clearly match are placed already.
+function ColumnMatch({ table, map, setMap, disabled, onBack, onDone, hasRows }) {
+  // Tapped and waiting for its partner: { tile: key } or { col: index }.
+  const [picked, setPicked] = useState(null);
+  const [over, setOver] = useState(null); // column a tile is being dragged over
+  const { heads, rows } = table;
+  const tiles = TARGETS.filter(([, , , auto]) => !auto);
+  const label = Object.fromEntries(TARGETS.map(([k, l]) => [k, l]));
+  const tileOn = (i) => Object.keys(map).find((k) => map[k] === i);
+  const place = (key, i) => {
+    setMap((m) => {
+      const n = {};
+      for (const [k, c] of Object.entries(m)) if (k !== key && c !== i) n[k] = c;
+      n[key] = i;
+      return n;
+    });
+    setPicked(null);
+  };
+  const clear = (key) => setMap((m) => { const n = { ...m }; delete n[key]; return n; });
+  const tapTile = (key) => {
+    if (disabled) return;
+    if (picked?.col != null) place(key, picked.col);
+    else setPicked((p) => (p?.tile === key ? null : { tile: key }));
+  };
+  const tapCol = (i) => {
+    if (disabled) return;
+    if (picked?.tile) place(picked.tile, i);
+    else setPicked((p) => (p?.col === i ? null : { col: i }));
+  };
+  const dropProps = (i) => (disabled ? {} : {
+    onDragOver: (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(i); },
+    onDragLeave: () => setOver((o) => (o === i ? null : o)),
+    onDrop: (e) => {
+      e.preventDefault();
+      setOver(null);
+      const key = e.dataTransfer.getData('text/plain');
+      if (label[key]) place(key, i);
+    },
+  });
+  const dragTile = (key) => (e) => { e.dataTransfer.setData('text/plain', key); e.dataTransfer.effectAllowed = 'move'; setPicked(null); };
+  const matched = Object.keys(map).length;
+  const names = map.name == null ? 0 : rows.filter((cells) => compact(cells[map.name])).length;
+  const width = (i) => (i === map.name || heads[i].field === 'name' ? 200 : 100);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-ink-600">
+        <b className="text-ink-800">Pick the right tile for each column read from the bill</b> — drag a tile onto the column, or tap the tile and then the column.
+        Tiles that clearly match are placed already; check them. Columns left without a tile aren&apos;t used.
+      </p>
+
+      <div>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-500">Read from the bill · {rows.length} line{rows.length === 1 ? '' : 's'}</p>
+        <div className="max-h-[42vh] overflow-auto rounded-lg border border-ink-200">
+          <table className="w-full table-fixed border-collapse text-left text-[12px]" style={{ minWidth: 40 + heads.reduce((s, _, i) => s + width(i), 0) }}>
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-ink-50">
+                <th className={`${hd} w-10 text-ink-400`}>#</th>
+                {heads.map((_, i) => {
+                  const key = tileOn(i);
+                  const active = over === i || picked?.col === i;
+                  return (
+                    <th
+                      key={i}
+                      style={{ width: width(i) }}
+                      className={`${hd} !p-1 ${disabled ? '' : 'cursor-pointer'} ${active ? '!bg-brand-100' : ''} ${picked?.tile && !key ? 'ring-1 ring-inset ring-brand-300' : ''}`}
+                      title={key ? `Fills ${label[key]} on the order` : 'Drop a tile here'}
+                      onClick={() => tapCol(i)}
+                      {...dropProps(i)}
+                    >
+                      {key ? (
+                        <span
+                          className="flex items-center justify-between gap-1 rounded-md bg-brand-600 px-1.5 py-1 text-[11px] font-bold text-white shadow-sm"
+                          draggable={!disabled}
+                          onDragStart={dragTile(key)}
+                        >
+                          <span className="truncate">{label[key]}</span>
+                          <button type="button" className="shrink-0 rounded text-white/70 hover:text-white" title="Remove" disabled={disabled} onClick={(e) => { e.stopPropagation(); clear(key); }}><X size={12} /></button>
+                        </span>
+                      ) : (
+                        <span className={`block rounded-md border border-dashed px-1.5 py-1 text-[11px] font-medium ${active ? 'border-brand-400 text-brand-600' : 'border-ink-300 text-ink-400'}`}>
+                          {picked?.col === i ? 'Now tap a tile' : 'Drop a tile'}
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((cells, r) => (
+                <tr key={r}>
+                  <td className={`${cell} text-center text-ink-400`}>{r + 1}</td>
+                  {cells.map((t, i) => (
+                    <td key={i} className={`${cell} px-1.5 ${tileOn(i) ? 'text-ink-800' : 'text-ink-400'} ${over === i ? 'bg-brand-50' : ''}`} {...dropProps(i)}>{t}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+          Order columns · {matched} placed
+          {picked?.tile && <span className="ml-1 normal-case tracking-normal text-brand-700">— now tap the column for “{label[picked.tile]}”</span>}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {tiles.map(([key, name]) => {
+            const placed = map[key] != null;
+            const sel = picked?.tile === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                disabled={disabled}
+                draggable={!disabled}
+                onDragStart={dragTile(key)}
+                onClick={() => tapTile(key)}
+                title={placed ? 'Placed on a column — drag it to another to move it' : 'Drag onto a bill column, or tap it then the column'}
+                className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors ${disabled ? '' : 'cursor-grab active:cursor-grabbing'} ${
+                  sel ? 'border-brand-600 bg-brand-600 text-white'
+                    : placed ? 'border-brand-200 bg-brand-50 text-brand-400'
+                      : 'border-brand-300 bg-white text-brand-700 hover:bg-brand-50'}`}
+              >
+                <GripVertical size={12} className="opacity-50" />
+                {name}
+                {placed && <Check size={12} />}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11px] text-ink-400">Unit, Old Price, Amount, GST Amt and Total are filled in on the order. Manufacturer, HSN and Rack are saved on new items.</p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 pt-3">
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-secondary" disabled={disabled} onClick={onBack}><ArrowLeft size={16} /> Select Again</button>
+          <button type="button" className="btn-secondary" disabled={disabled || !matched} onClick={() => { setMap({}); setPicked(null); }}><Eraser size={16} /> Clear All</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {map.name == null && <p className="text-[11px] font-medium text-amber-700">Place the Item Name tile on the item name column first.</p>}
+          <button type="button" className="btn-primary" disabled={disabled || !names} onClick={onDone}>
+            <Plus size={16} /> Add {names} Line{names === 1 ? '' : 's'} to the {hasRows ? 'List' : 'Review'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // The tab's rows as a grid, styled like the Purchase Order item grid.
 //  - New Items:        #  | Item Name | HSN | Rack | Manufacturer | Category (Batch) | Pack | MRP (all editable) | + / delete
 //  - Similar · Matched: # | Name on Bill               | Matched to (dropdown, or "Add as a new item")
@@ -610,18 +889,18 @@ const box = 'w-full min-w-0 rounded border border-transparent bg-transparent px-
 function ItemGrid({ tab, rows, disabled, update, remove, addAfter, cols: fields, forOrder }) {
   const second = tab === 'similar' ? 'Matched to' : tab === 'exists' ? 'Item in Item Master' : null;
   // For an order, matched and existing items go on it too: their Qty / MRP can be changed here.
-  const extra = tab === 'new' ? fields : forOrder ? fields.filter(([f]) => f === 'mrp' || f === 'qty') : [];
+  const extra = tab === 'new' ? fields : forOrder ? fields.filter(([f]) => NUMERIC.has(f)) : [];
   const cols = 2 + extra.length + (second ? 1 : 0) + (tab === 'new' ? 1 : 0);
   const rename = (v) => (e) => update(v.id, { name: e.target.value.toUpperCase(), choice: null });
-  const setField = (v, f) => (e) => update(v.id, { [f]: f === 'mrp' || f === 'qty' ? e.target.value : e.target.value.toUpperCase() });
+  const setField = (v, f) => (e) => update(v.id, { [f]: NUMERIC.has(f) ? e.target.value : e.target.value.toUpperCase() });
   const at = tab === 'new' ? 1 : 2; // grid column (data-c) of the first extra cell
   const extraCells = (v, r) => extra.map(([f, head], c) => (
     <td key={f} className={cell}>
       <input
-        className={`${box} ${f === 'mrp' || f === 'qty' ? 'text-right' : ''}`}
+        className={`${box} ${NUMERIC.has(f) ? 'text-right' : ''}`}
         data-r={r}
         data-c={c + at}
-        inputMode={f === 'mrp' || f === 'qty' ? 'decimal' : undefined}
+        inputMode={NUMERIC.has(f) ? 'decimal' : undefined}
         value={v[f]}
         disabled={disabled || v.status === 'dup'}
         aria-label={head}
@@ -632,7 +911,7 @@ function ItemGrid({ tab, rows, disabled, update, remove, addAfter, cols: fields,
 
   return (
     <div className="overflow-x-auto">
-      <table className={`w-full table-fixed border-collapse text-left text-[12px] ${tab === 'new' && extra.length ? 'min-w-[860px]' : ''} ${tab === 'new' && !extra.length ? 'max-w-2xl' : ''}`} {...gridKeys}>
+      <table className={`w-full table-fixed border-collapse text-left text-[12px] ${tab === 'new' && extra.length ? 'min-w-[1100px]' : ''} ${tab !== 'new' && extra.length ? 'min-w-[760px]' : ''} ${tab === 'new' && !extra.length ? 'max-w-2xl' : ''}`} {...gridKeys}>
         <thead>
           <tr className="bg-brand-50 text-[11px] font-bold leading-tight text-brand-700">
             <th className={`${hd} w-10`}>#</th>

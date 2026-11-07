@@ -346,8 +346,15 @@ export default function PurchaseOrder() {
       const line = lineFromItem(it);
       if (Number(s.qty) > 0) line.qty = s.qty;
       if (s.mrp !== '' && Number(s.mrp) >= 0) line.mrp = numStr(s.mrp);
+      // The bill's P.Rate, Free, Disc % and GST %, when its columns were matched.
+      const given = (v) => v != null && String(v).trim() !== '' && Number(v) >= 0;
+      if (given(s.pRate) && Number(s.pRate) > 0) line.pRate = numStr(s.pRate);
+      if (given(s.free)) line.free = numStr(s.free);
+      if (given(s.disc) && Number(s.disc) <= 100) line.disc = numStr(s.disc);
+      if (given(s.gst) && Number(s.gst) <= 100) Object.assign(line, splitGst(numStr(s.gst)));
       fresh.push(line);
     }
+    const noRate = fresh.filter((l) => !(Number(l.pRate) > 0)).length;
     if (fresh.length) setLines((ls) => [...ls.filter((l) => l.itemId), ...fresh]);
     setScanOpen(false);
     setPoTab('items');
@@ -358,7 +365,7 @@ export default function PurchaseOrder() {
       already ? `${already} already on the order` : '',
       inactive ? `${inactive} inactive left out` : '',
     ].filter(Boolean).join(' · ');
-    show(`Added ${fresh.length} item${fresh.length === 1 ? '' : 's'} from the bill${notes ? ` (${notes})` : ''} — enter the P.Rate for each`, 'success');
+    show(`Added ${fresh.length} item${fresh.length === 1 ? '' : 's'} from the bill${notes ? ` (${notes})` : ''}${noRate ? ` — enter the P.Rate for ${noRate === fresh.length ? 'each' : `${noRate} of them`}` : ''}`, 'success');
   };
 
   const addTicked = () => {
