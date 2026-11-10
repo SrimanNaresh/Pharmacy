@@ -85,14 +85,14 @@ export function rotateCanvas(src, deg) {
 // The part of the page inside rect ({ x, y, w, h } as shares of the page), or
 // the whole page; grey and scaled so the text is big enough for Tesseract
 // (small print reads far better upscaled).
-function prepared(src, rect) {
+function prepared(src, rect, size = 2400, max = 4000) {
   const r = rect || { x: 0, y: 0, w: 1, h: 1 };
   const sx = Math.round(r.x * src.width);
   const sy = Math.round(r.y * src.height);
   const sw = Math.max(1, Math.round(r.w * src.width));
   const sh = Math.max(1, Math.round(r.h * src.height));
   const longest = Math.max(sw, sh);
-  const k = longest < 2400 ? Math.min(3, 2400 / longest) : longest > 4000 ? 4000 / longest : 1;
+  const k = longest < size ? Math.min(3, size / longest) : longest > max ? max / longest : 1;
   const c = blankCanvas(sw * k, sh * k);
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#fff';
@@ -112,6 +112,48 @@ function prepared(src, rect) {
 // upside-down one almost none.
 const sureWords = (data) => (data.words || []).filter((w) => w.confidence >= 70 && /[A-Za-z]{3,}/.test(w.text)).length;
 
+// Sure words in the middle strip that show the page is the right way up
+// (sideways or upside-down text gives almost none).
+const CLEARLY_UPRIGHT = 12;
+
+// The middle of the page, top to bottom (where the item rows are), enlarged
+// and grey like a real read — but no bigger than needed, so it reads fast.
+function middleStrip(page) {
+  const h = page.height > page.width ? 0.3 : 0.45;
+  return prepared(page, { x: 0, y: (1 - h) / 2, w: 1, h }, 1800, 1800);
+}
+
+// Does the text run across the page (upright or upside down) rather than up
+// and down it (sideways)? Lines of print leave blank rows of pixels between
+// them; sideways, the blank lines run top to bottom instead. A quick guess
+// from a small copy of the page, only used to pick which angle to try first.
+function linesRunAcross(page) {
+  const small = fitted(page, page.width, page.height, 400);
+  const { width: w, height: h } = small;
+  const d = small.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const rows = new Array(h).fill(0);
+  const cols = new Array(w).fill(0);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = (y * w + x) * 4;
+      if (d[i] + d[i + 1] + d[i + 2] < 384) { rows[y] += 1; cols[x] += 1; }
+    }
+  }
+  // How many times the ink comes and goes along each direction: print lines
+  // stacked down the page make many such bands.
+  const bands = (counts, across) => {
+    let n = 0;
+    let inked = false;
+    for (const c of counts) {
+      const now = c > across * 0.01;
+      if (now && !inked) n += 1;
+      inked = now;
+    }
+    return n;
+  };
+  return bands(rows, w) >= bands(cols, h);
+}
+
 // One Tesseract reader, kept while the Scan Bill popup is open.
 export async function createOcr() {
   const { createWorker } = await import('tesseract.js');
@@ -125,13 +167,17 @@ export async function createOcr() {
   return {
     // How far to turn the page (clockwise) so its text is upright: 0, 90, 180 or 270.
     // Bills are often scanned sideways (a landscape bill on a portrait page).
-    async uprightAngle(page) {
-      const small = fitted(page, page.width, page.height, 1400);
+    // Only a strip across the middle is read for this, enlarged like a real
+    // read (a small photo read as is gives too few sure words and every
+    // angle got tried), and it stops at the first angle that reads clearly.
+    // first: the angle to try first (a PDF's other pages: page 1's angle).
+    async uprightAngle(page, first = null) {
+      const order = [...new Set([first, ...(linesRunAcross(page) ? [0, 180, 90, 270] : [90, 270, 0, 180])].filter((d) => d != null))];
       let best = { deg: 0, score: -1 };
-      for (const deg of [0, 90, 270, 180]) {
-        const score = sureWords((await worker.recognize(rotateCanvas(small, deg))).data);
+      for (const deg of order) {
+        const score = sureWords((await worker.recognize(middleStrip(rotateCanvas(page, deg)))).data);
         if (score > best.score) best = { deg, score };
-        if (deg === 0 && score >= 40) break; // clearly upright already
+        if (score >= CLEARLY_UPRIGHT) break;
       }
       return best.deg;
     },

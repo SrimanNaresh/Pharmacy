@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Menu, LogOut, ChevronDown } from 'lucide-react';
 import TopNav, { SideNav, MobileMenu } from './components/TopNav.jsx';
@@ -7,32 +7,41 @@ import { useAuth } from './context/AuthContext.jsx';
 import { useAppName } from './hooks/useAppName.js';
 import Login from './pages/Login.jsx';
 
-import DashboardRedirect from './pages/DashboardRedirect.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import UserMaster from './pages/master/UserMaster.jsx';
-import MenuAccess from './pages/master/MenuAccess.jsx';
-import PharmacyDetails from './pages/master/PharmacyDetails.jsx';
-import VendorMaster from './pages/pharmacy/VendorMaster.jsx';
-import VendorList from './pages/pharmacy/VendorList.jsx';
-import ItemMaster from './pages/pharmacy/ItemMaster.jsx';
-import ItemListPage from './pages/pharmacy/ItemListPage.jsx';
-import ItemBulkUpdate from './pages/pharmacy/ItemBulkUpdate.jsx';
-import PurchaseOrder from './pages/pharmacy/PurchaseOrder.jsx';
-import PurchaseOrderList from './pages/pharmacy/PurchaseOrderList.jsx';
-import StockIn from './pages/pharmacy/StockIn.jsx';
-import StockInList from './pages/pharmacy/StockInList.jsx';
-import StockReturnMaster from './pages/pharmacy/StockReturnMaster.jsx';
-import StockReturnList from './pages/pharmacy/StockReturnList.jsx';
-import SalesReturnMaster from './pages/pharmacy/SalesReturnMaster.jsx';
-import StockAdjustment from './pages/pharmacy/StockAdjustment.jsx';
-import StockAdjustmentList from './pages/pharmacy/StockAdjustmentList.jsx';
-import SalesReturnList from './pages/pharmacy/SalesReturnList.jsx';
-import SalesBilling from './pages/pharmacy/SalesBilling.jsx';
-import SalesBillingList from './pages/pharmacy/SalesBillingList.jsx';
-import StockReport from './pages/pharmacy/StockReport.jsx';
-import AllInOneReport from './pages/pharmacy/AllInOneReport.jsx';
-import VendorPayments from './pages/pharmacy/VendorPayments.jsx';
-import VendorPaymentEntry from './pages/pharmacy/VendorPaymentEntry.jsx';
+const DashboardRedirect = lazy(() => import('./pages/DashboardRedirect.jsx'));
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const UserMaster = lazy(() => import('./pages/master/UserMaster.jsx'));
+const MenuAccess = lazy(() => import('./pages/master/MenuAccess.jsx'));
+const PharmacyDetails = lazy(() => import('./pages/master/PharmacyDetails.jsx'));
+const VendorMaster = lazy(() => import('./pages/pharmacy/VendorMaster.jsx'));
+const VendorList = lazy(() => import('./pages/pharmacy/VendorList.jsx'));
+const ItemMaster = lazy(() => import('./pages/pharmacy/ItemMaster.jsx'));
+const ItemListPage = lazy(() => import('./pages/pharmacy/ItemListPage.jsx'));
+const ItemBulkUpdate = lazy(() => import('./pages/pharmacy/ItemBulkUpdate.jsx'));
+const PurchaseOrder = lazy(() => import('./pages/pharmacy/PurchaseOrder.jsx'));
+const PurchaseOrderList = lazy(() => import('./pages/pharmacy/PurchaseOrderList.jsx'));
+const StockIn = lazy(() => import('./pages/pharmacy/StockIn.jsx'));
+const StockInList = lazy(() => import('./pages/pharmacy/StockInList.jsx'));
+const StockIps = lazy(() => import('./pages/pharmacy/StockIps.jsx'));
+const StockReturnMaster = lazy(() => import('./pages/pharmacy/StockReturnMaster.jsx'));
+const StockReturnList = lazy(() => import('./pages/pharmacy/StockReturnList.jsx'));
+const SalesReturnMaster = lazy(() => import('./pages/pharmacy/SalesReturnMaster.jsx'));
+const StockAdjustment = lazy(() => import('./pages/pharmacy/StockAdjustment.jsx'));
+const StockAdjustmentList = lazy(() => import('./pages/pharmacy/StockAdjustmentList.jsx'));
+const SalesReturnList = lazy(() => import('./pages/pharmacy/SalesReturnList.jsx'));
+const SalesBilling = lazy(() => import('./pages/pharmacy/SalesBilling.jsx'));
+const SalesBillingList = lazy(() => import('./pages/pharmacy/SalesBillingList.jsx'));
+const StockReport = lazy(() => import('./pages/pharmacy/StockReport.jsx'));
+const AllInOneReport = lazy(() => import('./pages/pharmacy/AllInOneReport.jsx'));
+const VendorPayments = lazy(() => import('./pages/pharmacy/VendorPayments.jsx'));
+const VendorPaymentEntry = lazy(() => import('./pages/pharmacy/VendorPaymentEntry.jsx'));
+
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
+    </div>
+  );
+}
 
 function UserMenu() {
   const { user, logout } = useAuth();
@@ -131,6 +140,8 @@ function AppLayout({ appName }) {
         {navSide && <SideNav />}
         <main className="no-scrollbar min-w-0 flex-1 overflow-y-auto px-4 pb-4 pt-2 lg:px-6 lg:pb-6 lg:pt-2">
           <div className="w-full animate-fade-in">
+            {/* Each page's code loads when it's first opened, not all up front. */}
+            <Suspense fallback={<PageLoading />}>
             <Routes>
                 <Route path="/" element={<DashboardRedirect />} />
               <Route path="/dashboard" element={<Dashboard />} />
@@ -144,6 +155,7 @@ function AppLayout({ appName }) {
                 <Route path="/pharmacy/purchase-order-list" element={<PurchaseOrderList />} />
                 <Route path="/pharmacy/stock-in" element={<StockIn />} />
                 <Route path="/pharmacy/stock-in-list" element={<StockInList />} />
+                <Route path="/pharmacy/stock-ips" element={<StockIps />} />
                 <Route path="/pharmacy/stock-adjustment" element={<StockAdjustment />} />
                 <Route path="/pharmacy/stock-adjustment-list" element={<StockAdjustmentList />} />
                 <Route path="/pharmacy/return" element={<StockReturnMaster />} />
@@ -159,6 +171,7 @@ function AppLayout({ appName }) {
                 <Route path="/pharmacy/vendor-payments" element={<VendorPayments />} />
                 <Route path="/pharmacy/all-in-one-report" element={<AllInOneReport />} />
               </Routes>
+            </Suspense>
           </div>
           <div data-fab-spacer className="h-14 lg:hidden" />
         </main>

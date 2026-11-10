@@ -39,7 +39,7 @@ import { gridKeys } from '../../components/grid/gridKeys.js';
 // through onLines([{ itemId, qty, mrp, pRate, free, disc, gst }]).
 
 let nextId = 1;
-const blankFields = { hsnCode: '', rack: '', manufacturer: '', category: '', pack: '', mrp: '', pRate: '', free: '', disc: '', qty: '', gst: '' };
+const blankFields = { generic: '', unit: '', hsnCode: '', rack: '', manufacturer: '', category: '', pack: '', mrp: '', pRate: '', free: '', disc: '', qty: '', gst: '' };
 // Order fields typed as numbers, and the ones the matched / existing tabs can change.
 const NUMERIC = new Set(['mrp', 'pRate', 'free', 'disc', 'qty', 'gst']);
 const newRow = (fields) => ({ id: nextId++, ...blankFields, ...fields, include: true, choice: null, result: null });
@@ -47,34 +47,69 @@ const newRow = (fields) => ({ id: nextId++, ...blankFields, ...fields, include: 
 const COLS = [
   ['hsnCode', 'HSN', 'w-[11%]', 30],
   ['rack', 'Rack', 'w-[8%]', 50],
+  ['generic', 'Generic', 'w-[11%]', 200],
   ['manufacturer', 'Manufacturer', 'w-[13%]', 200],
   ['category', 'Category (Batch)', 'w-[12%]', 100],
   ['pack', 'Pack', 'w-[8%]', 50],
+  ['unit', 'Unit', 'w-[6%]', 50],
   ['mrp', 'MRP', 'w-[9%]', null],
 ];
 const BILL_HEADING = {
   name: 'Item Description', hsnCode: 'HSNCODE', rack: 'Rack', manufacturer: 'MFR', category: 'Batch', pack: 'Pack', mrp: 'MRP', qty: 'qty',
 };
 const ORDER_COLS = [
-  ['pRate', 'P.Rate', 'w-[7%]', null],
-  ['free', 'Free', 'w-[5%]', null],
   ['disc', 'Disc%', 'w-[5%]', null],
+  ['pRate', 'P.Rate', 'w-[7%]', null],
   ['qty', 'Qty', 'w-[6%]', null],
+  ['free', 'Free', 'w-[5%]', null],
   ['gst', 'GST%', 'w-[5%]', null],
 ];
 
-// Match columns: the Purchase Order's header row, in its order on screen.
-// [key, heading, width px, auto] — auto columns come from Item Master or are
-// worked out on the order, so nothing is dropped on them. Manufacturer, HSN and
-// Rack are saved on new items in Item Master.
+// Match columns: every column of the Purchase Order's item grid, in its order
+// on screen (plus Rack, kept on the item), as a tile: [key, heading, width px].
+//  - Generic, Manufacturer, HSN, Category, Pack, Unit, Rack are saved on new
+//    items in Item Master.
+//  - Amount (Qty x rate after discount) or Old Price (the rate after
+//    discount) give the P.Rate when the bill has no rate column; GST Amt or
+//    Total give the GST % when it has none. The order works these out again
+//    from its own figures.
 const TARGETS = [
-  ['name', 'Item Name', 200], ['category', 'Category', 100], ['pack', 'Pack', 70], ['unit', 'Unit', 60, 'From Item Master'],
-  ['mrp', 'MRP', 75], ['oldPrice', 'Old Price', 75, 'Last rate from the vendor, shown on the order'], ['pRate', 'P.Rate', 75],
-  ['free', 'Free', 60], ['disc', 'Disc%', 60], ['qty', 'Qty', 60], ['amount', 'Amount', 80, 'Worked out on the order'],
-  ['gst', 'GST%', 60], ['cgst', 'CGST%', 65], ['sgst', 'SGST%', 65], ['gstAmt', 'GST Amt', 75, 'Worked out on the order'],
-  ['total', 'Total', 80, 'Worked out on the order'],
-  ['manufacturer', 'Manufacturer', 120], ['hsnCode', 'HSN', 85], ['rack', 'Rack', 65],
+  ['name', 'Item Name', 200], ['generic', 'Generic', 110], ['manufacturer', 'Manufacturer', 120], ['hsnCode', 'HSN', 85],
+  ['category', 'Category', 100], ['pack', 'Pack', 70], ['unit', 'Unit', 60],
+  ['mrp', 'MRP', 75], ['oldPrice', 'Old Price', 75], ['disc', 'Disc%', 60], ['pRate', 'P.Rate', 75],
+  ['qty', 'Qty', 60], ['free', 'Free', 60], ['amount', 'Amount', 80],
+  ['gst', 'GST%', 60], ['cgst', 'CGST%', 65], ['sgst', 'SGST%', 65], ['gstAmt', 'GST Amt', 75],
+  ['total', 'Total', 80], ['rack', 'Rack', 65],
 ];
+// Stock In > Scan Bill (Scan Stock Bill): every column of the Stock In table,
+// in its order on screen, as a tile. Rows are matched by Item Name; then
+//  - Batch No, Mf.Date, Exp.Date, R.Order, R.Free and S.Disc % fill the row;
+//  - Received (split into R.Order + R.Free) or Amount (/ the order's rate)
+//    give R.Order when the bill has no such column; Sel.Amount or Unit Price
+//    give S.Disc % (of the MRP);
+//  - the order's own figures (Pack, Unit, MRP, P.Rate, Disc %, GST, Ordered,
+//    Free) help pick the right row when names are alike.
+const STOCK_TARGETS = [
+  ['name', 'Item Name', 200], ['pack', 'Pack', 70], ['unit', 'Unit', 60], ['mrp', 'MRP', 75],
+  ['pRate', 'P.Rate', 75], ['disc', 'Disc%', 60], ['amount', 'Amount', 80],
+  ['gst', 'GST%', 60], ['cgst', 'CGST%', 65], ['sgst', 'SGST%', 65], ['gstAmt', 'GST Amt', 75], ['total', 'Total', 80],
+  ['ordered', 'Ordered', 65], ['freeOrdered', 'Free', 60], ['received', 'Received', 70],
+  ['qty', 'R.Order', 65], ['free', 'R.Free', 60], ['category', 'Batch No', 100],
+  ['mfg', 'Mf.Date', 70], ['exp', 'Exp.Date', 70], ['sDisc', 'S.Disc%', 65], ['sel', 'Sel.Amount', 80], ['unitPrice', 'Unit Price', 75],
+];
+const STOCK_NUMERIC = new Set(['ordered', 'freeOrdered', 'received', 'sDisc', 'sel', 'unitPrice']);
+// Stock In > Three in One (IPS): the columns of all three screens, grouped
+// Item Master · Purchase / Order · Stock In, as on the IPS table.
+const IPS_TARGETS = [
+  ['name', 'Item Name', 200], ['generic', 'Generic', 110], ['manufacturer', 'Manufacturer', 120], ['hsnCode', 'HSN', 85],
+  ['category', 'Category', 100], ['pack', 'Pack', 70], ['unit', 'Unit', 60], ['rack', 'Rack', 65],
+  ['mrp', 'MRP', 75], ['oldPrice', 'Old Price', 75], ['disc', 'Disc%', 60], ['pRate', 'P.Rate', 75],
+  ['qty', 'Qty', 60], ['free', 'Free', 60], ['amount', 'Amount', 80],
+  ['gst', 'GST%', 60], ['cgst', 'CGST%', 65], ['sgst', 'SGST%', 65], ['gstAmt', 'GST Amt', 75], ['total', 'Total', 80],
+  ['batch', 'Batch No', 100], ['mfg', 'Mf.Date', 70], ['exp', 'Exp.Date', 70], ['sDisc', 'S.Disc%', 65], ['sel', 'Sel.Amount', 80],
+];
+// Bill figures used only to work out P.Rate / GST % (not kept on the row).
+const DERIVE_ONLY = ['oldPrice', 'amount', 'gstAmt', 'total', 'cgst', 'sgst'];
 const headKey = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
 // A bill heading the reader didn't name, by its words: "Rate" -> P.Rate, "GST %" -> GST%...
 const BY_LABEL = [
@@ -83,15 +118,71 @@ const BY_LABEL = [
   ['gst', (k) => /^(gst|igst|tax)/.test(k) && !/amt|amount|value|able/.test(k)],
   ['free', (k) => k.startsWith('free') || k === 'fr'],
   ['disc', (k) => /^(disc|dis|discount|cd|sch)/.test(k) && !/amt|amount/.test(k)],
-  ['pRate', (k) => /^(rate|prate|ptr|pts|purrate|purchaserate|netrate|price)$/.test(k)],
+  ['oldPrice', (k) => /^(netrate|nrate|netprice|effrate)$/.test(k)],
+  ['pRate', (k) => /^(rate|prate|ptr|pts|purrate|purchaserate|price)$/.test(k)],
+  ['gstAmt', (k) => /^(gst|igst|tax)(amt|amount|value)$/.test(k)],
+  ['amount', (k) => /^(amt|amount|value|taxable|taxablevalue|taxableamt|grossamt|grossamount)$/.test(k)],
+  ['total', (k) => /^(total|netamt|netamount|nettotal|totalamt|totalamount)$/.test(k)],
+  ['unit', (k) => /^(unit|uom|type)$/.test(k)],
+  ['generic', (k) => /^(generic|genericname|composition|content)$/.test(k)],
+  ['received', (k) => /^(received|recd|rec|recqty|receivedqty)$/.test(k)],
+  ['ordered', (k) => /^(ordered|ordqty|orderqty|ord)$/.test(k)],
+  ['sDisc', (k) => /^(sdisc|salesdisc|saledisc|sellingdisc)$/.test(k)],
+  ['sel', (k) => /^(selamount|sellingprice|saleprice|salerate|sp|srate)$/.test(k)],
+  ['unitPrice', (k) => /^(unitprice|unitrate|perunit)$/.test(k)],
+  // Exp, Expiry, Exp.Date, Exp Dt, Expiry Dt, Expy, ED... / Mfg Dt, Mfd, Mf.Date, MD...
+  ['exp', (k) => /^(exp|expy|expiry|expire|expires|expd|ed)(date|dt|on|mmyy|month)?$/.test(k) || k === 'expirydt'],
+  ['mfg', (k) => /^(mfg|mfd|mf|md|mfgd|manufacturing|manufactured|manuf)(date|dt|on|mmyy|month)$/.test(k) || /^(mfd|md)$/.test(k)],
 ];
-function autoMap(heads) {
+// The tiles placed already: a column the reader named, or whose heading says
+// what it is — only tiles of this screen (targets).
+function autoMap(heads, targets = TARGETS) {
+  const keys = new Set(targets.map(([k]) => k));
   const map = {};
   heads.forEach((h, i) => {
-    const key = h.field || BY_LABEL.find(([, test]) => test(headKey(h.label)))?.[0];
+    const key = keys.has(h.field) ? h.field : BY_LABEL.find(([k, test]) => keys.has(k) && test(headKey(h.label)))?.[0];
     if (key && map[key] == null) map[key] = i;
   });
   return map;
+}
+// autoMap, plus the date columns by what they hold when their heading didn't
+// say: a column of months ("05/27", "MAY-27", "12/2027") is Exp.Date — of two
+// such columns, the first is Mf.Date and the second Exp.Date.
+function autoMapTable(table, targets = TARGETS) {
+  const map = autoMap(table.heads, targets);
+  const keys = new Set(targets.map(([k]) => k));
+  if (!keys.has('exp') || map.exp != null) return map;
+  const taken = new Set(Object.values(map));
+  const dated = table.heads.map((_, i) => i).filter((i) => {
+    if (taken.has(i)) return false;
+    const cells = table.rows.map((r) => String(r[i] || '').trim()).filter(Boolean);
+    const months = cells.filter((t) => monthIn(t) && /[/\-.]|[A-Z]{3}/i.test(t) && !/\d{5,}/.test(t));
+    return cells.length >= 2 && months.length >= cells.length * 0.6;
+  });
+  if (dated.length >= 2 && keys.has('mfg') && map.mfg == null) { map.mfg = dated[0]; map.exp = dated[1]; } else if (dated.length) map.exp = dated[dated.length - 1];
+  return map;
+}
+
+// A bill's month as 'YYYY-MM', or ''. Read: "2/28", "12/27", "03-2028",
+// "12/2027", "0527" / "052027" (no separator), "MAY-27", "May 2027", "MAY27",
+// and a full date "31/05/2027" (its month and year). OCR's O for 0 is put right.
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+function monthIn(text) {
+  const t = String(text || '').toUpperCase().replace(/(?<=\d)O|O(?=\d)/g, '0').trim();
+  const out = (mm, yy) => {
+    const mo = Number(mm);
+    if (!(mo >= 1 && mo <= 12)) return '';
+    const y = String(yy).length === 2 ? `20${yy}` : String(yy);
+    return /^20\d{2}$/.test(y) ? `${y}-${String(mo).padStart(2, '0')}` : '';
+  };
+  let m = /(?:^|\D)\d{1,2}\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{4}|\d{2})(?!\d)/.exec(t); // 31/05/2027
+  if (m) return out(m[1], m[2]);
+  m = /([A-Z]{3})[A-Z]*\.?\s*[-/.,']?\s*(\d{4}|\d{2})(?!\d)/.exec(t); // MAY-27, May 2027
+  if (m && MONTHS.includes(m[1])) return out(MONTHS.indexOf(m[1]) + 1, m[2]);
+  m = /(?:^|\D)(\d{1,2})\s*[/\-.]\s*(\d{4}|\d{2})(?!\d)/.exec(t); // 05/27, 5-2027
+  if (m) return out(m[1], m[2]);
+  m = /^(\d{2})(\d{4}|\d{2})$/.exec(t.replace(/\s/g, '')); // 0527, 052027
+  return m ? out(m[1], m[2]) : '';
 }
 // A bill cell as the value for an order column.
 const numIn = (t, last = false) => {
@@ -101,28 +192,98 @@ const numIn = (t, last = false) => {
 };
 function valueFor(key, text) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (key === 'exp' || key === 'mfg') return monthIn(t);
   if (key === 'mrp') return numIn(t, true);
-  if (NUMERIC.has(key) || key === 'cgst' || key === 'sgst') return numIn(t);
+  if (NUMERIC.has(key) || DERIVE_ONLY.includes(key) || STOCK_NUMERIC.has(key)) return numIn(t);
   if (key === 'hsnCode') return t.replace(/[oO]/g, '0').replace(/\D/g, '').slice(0, 30);
-  if (key === 'category') return t.replace(/ /g, '').toUpperCase().slice(0, 100);
-  const max = { name: 200, manufacturer: 200, pack: 50, rack: 50 }[key] || 100;
+  if (key === 'category' || key === 'batch') return t.replace(/ /g, '').toUpperCase().slice(0, key === 'batch' ? 50 : 100);
+  const max = { name: 200, manufacturer: 200, generic: 200, pack: 50, rack: 50, unit: 50 }[key] || 100;
   return t.toUpperCase().slice(0, max);
 }
+// The bill's Disc as a percentage. Bills print it either as a % ("35.00"
+// with MRP 185.00 and rate 120.25) or as a rupee amount; the line's MRP,
+// P.Rate and Qty tell which:
+//  - MRP less Disc % gives the rate          -> it's a %, kept
+//  - MRP less Disc gives the rate            -> an amount per unit, as a % of MRP
+//  - MRP × Qty less Disc gives rate × Qty    -> an amount for the line, as a % of it
+// Without a rate to check against, up to 100 is taken as a %, and more than
+// that as an amount (per unit if below the MRP, else for the line). A value
+// that still isn't 0–100 % is left blank (skipped), not saved wrong.
+function discPercent(text, o) {
+  const t = String(text || '');
+  const num = numIn(t);
+  if (num === '') return '';
+  const v = Number(num);
+  const mrp = Number(o.mrp) || 0;
+  const rate = Number(o.pRate) || 0;
+  const qty = Number(o.qty) || 0;
+  const near = (a, b) => Math.abs(a - b) <= Math.max(0.05, Math.abs(b) * 0.01);
+  const pct = (x) => (x >= 0 && x <= 100 ? String(Math.round(x * 100) / 100) : '');
+  if (/%/.test(t)) return pct(v);
+  if (mrp > 0 && rate > 0) {
+    if (near(mrp * (1 - v / 100), rate)) return pct(v);
+    if (near(mrp - v, rate)) return pct((v / mrp) * 100);
+    if (qty > 0 && near(mrp * qty - v, rate * qty)) return pct((v / (mrp * qty)) * 100);
+  }
+  if (v <= 100) return pct(v);
+  if (!mrp) return '';
+  if (v < mrp) return pct((v / mrp) * 100);
+  return qty > 0 ? pct((v / (mrp * qty)) * 100) : '';
+}
+
 // One bill line through the column matches -> the fields of a scanned row.
-function fieldsOf(cells, map) {
+function fieldsOf(cells, map, targets = TARGETS) {
   const o = {};
-  for (const [key, , , auto] of TARGETS) if (!auto && map[key] != null) o[key] = valueFor(key, cells[map[key]]);
-  if (o.gst == null && (o.cgst || o.sgst)) o.gst = String(Math.round((Number(o.cgst || 0) + Number(o.sgst || 0)) * 100) / 100);
-  delete o.cgst; delete o.sgst;
+  for (const [key] of targets) if (map[key] != null) o[key] = valueFor(key, cells[map[key]]);
+  if (o.disc != null) o.disc = discPercent(cells[map.disc], o);
+  const r2 = (n) => String(Math.round(n * 100) / 100);
+  const n = (k) => Number(o[k]) || 0;
+  // On the order P.Rate = MRP less Disc % (the order puts that right when the
+  // line goes on it). No P.Rate on the bill: the rate is the Amount / Qty, or
+  // the Old Price (net rate) column.
+  if (!(n('pRate') > 0)) {
+    const net = n('amount') > 0 && n('qty') > 0 ? n('amount') / n('qty') : n('oldPrice');
+    if (net > 0) o.pRate = r2(net);
+  }
+  // No GST % on the bill: from CGST + SGST, else GST Amt or Total against the
+  // Amount (or Qty x the net rate when there's no Amount column).
+  if (!o.gst) {
+    const amt = n('amount') || n('qty') * n('oldPrice');
+    if (o.cgst || o.sgst) o.gst = r2(n('cgst') + n('sgst'));
+    else if (amt > 0 && n('gstAmt') > 0) o.gst = r2((n('gstAmt') / amt) * 100);
+    else if (amt > 0 && n('total') > amt) o.gst = r2(((n('total') - amt) / amt) * 100);
+    if (o.gst && !(Number(o.gst) <= 100)) o.gst = '';
+  }
+  for (const k of DERIVE_ONLY) delete o[k];
   return o;
 }
+// What makes two lines the same: Item Name + HSN + Batch (Category). A bill can
+// carry one item in two batches — those are two lines, not a repeat.
+const hsnOf = (s) => String(s || '').replace(/\D/g, '');
+const batchOf = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const lineKey = (r) => `${compact(r.name)}|${hsnOf(r.hsnCode)}|${batchOf(r.category)}`;
+// An Item Master item with the same name is the same item unless its HSN or
+// Batch differs from the line's (a blank one on either side doesn't count).
+const sameAs = (it, r) => {
+  const differs = (a, b) => a !== '' && b !== '' && a !== b;
+  return !differs(hsnOf(it.HSNCode), hsnOf(r.hsnCode)) && !differs(batchOf(it.Category), batchOf(r.category));
+};
 const NEW = 'new';
 const code = (it) => it.ItemCode || `ITM${String(it.ItemId).padStart(6, '0')}`;
 const MIN_BOX = 0.02; // a selection smaller than this (share of the page) is a slip, not a box
 
-export default function ScanBillModal({ open, onClose, onAdded, forOrder = false, onLines }) {
-  // Item Master's scan reads names only; a Purchase Order's also reads the bill's columns.
+// forStock (Stock In > Scan Bill): Upload, Select table and Match columns as
+// for an order, with Stock In's columns; then the bill's lines go back
+// through onStockLines([{ name, hsnCode, category (batch), mfg, exp, qty, free }])
+// and Stock In fills its rows — no items are added.
+// forIps (Stock In > Three in One): the same, with the columns of Item
+// Master, Purchase / Order and Stock In; the lines (order maths applied, as
+// for an order) go back through onIpsLines and fill the IPS table.
+export default function ScanBillModal({ open, onClose, onAdded, forOrder = false, onLines, forStock = false, onStockLines, forIps = false, onIpsLines }) {
+  // Item Master's scan reads names only; a Purchase Order's (and Stock In's) also reads the bill's columns.
   const cols = forOrder ? [...COLS, ...ORDER_COLS] : [];
+  const tableMode = forOrder || forStock || forIps;
+  const targets = forIps ? IPS_TARGETS : forStock ? STOCK_TARGETS : TARGETS;
   const [items, setItems] = useState([]);
   // Matching needs the item list: until it's loaded nothing can be read or
   // added, or every line would look new.
@@ -164,6 +325,9 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
     reset();
     setItemsReady(false);
     loadItems().catch(() => setError("Couldn't load the item list, so bill lines can't be checked against it — close this and try again"));
+    // Get the text reader ready while the user picks the bill (the first time
+    // it downloads its language data), so the upload doesn't wait for it.
+    startOcr();
     return () => {
       // Free the OCR reader when the popup closes.
       const ocr = ocrRef.current;
@@ -172,13 +336,21 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
     };
   }, [open, loadItems]);
 
-  const getOcr = async () => {
+  // The reader is started when the popup opens; getOcr waits for it (or starts
+  // it again if that failed, e.g. no network then).
+  const startOcr = () => {
     if (!ocrRef.current) {
-      setBusy({ stage: 'Getting the text reader ready (the first time can take a moment)', percent: null });
-      ocrRef.current = import('../../utils/billOcr.js').then((m) => m.createOcr());
-      ocrRef.current.catch(() => { ocrRef.current = null; });
+      const p = import('../../utils/billOcr.js').then((m) => m.createOcr());
+      ocrRef.current = p;
+      p.then(() => { readyRef.current = p; }, () => { if (ocrRef.current === p) ocrRef.current = null; });
     }
     return ocrRef.current;
+  };
+  const readyRef = useRef(null); // the reader's promise once it has resolved
+  const getOcr = async () => {
+    const p = startOcr();
+    if (readyRef.current !== p) setBusy({ stage: 'Getting the text reader ready (the first time can take a moment)', percent: null });
+    return p;
   };
 
   const index = useMemo(() => buildIndex(items), [items]);
@@ -187,8 +359,19 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
   const view = useMemo(() => {
     const seen = new Map();
     return rows.map((r, i) => {
-      const key = compact(r.name);
-      const m = matchName(r.name, index);
+      const key = compact(r.name) ? lineKey(r) : '';
+      let m = matchName(r.name, index);
+      if (m.exact) {
+        // Same name in Item Master: it's that item only if HSN and Batch agree too;
+        // otherwise the same-name items are offered (default: add as a new item).
+        const twins = index.filter((e) => e.comp === compact(r.name)).map((e) => e.item);
+        const same = twins.find((it) => sameAs(it, r));
+        m = same ? { ...m, exact: same } : { exact: null, similar: twins.map((item) => ({ item, chars: 1, rank: 1, twin: true })), likely: null };
+      } else if (m.likely && !sameAs(m.likely, r)) {
+        // A name that's only alike is picked for the line by default only when
+        // its HSN and Batch agree too — else it's offered, and a new item is the default.
+        m = { ...m, likely: null };
+      }
       let status;
       if (r.result?.added) status = 'added';
       else if (!key) status = 'empty';
@@ -237,8 +420,13 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
       const ocr = await getOcr();
       setBusy({ stage: 'Turning the bill the right way up', percent: null });
       const { rotateCanvas } = await import('../../utils/billOcr.js');
+      // A PDF's pages are usually all turned the same way: try page 1's angle first.
       const upright = [];
-      for (const p of loaded) upright.push(rotateCanvas(p, await ocr.uprightAngle(p)));
+      let deg = null;
+      for (const p of loaded) {
+        deg = await ocr.uprightAngle(p, deg);
+        upright.push(rotateCanvas(p, deg));
+      }
       setPages(upright);
       setStep('select');
     } catch (err) {
@@ -264,7 +452,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
       const { text, layout } = await ocr.read(pages[pageNo], whole ? null : box, (percent) => setBusy((b) => (b ? { ...b, percent } : b)));
       // For an order, once per bill: the supplier's name, address and the
       // bill date, from the top of the first page (above the item table).
-      if (forOrder && !supplier) {
+      if ((forOrder || forIps) && !supplier) {
         setBusy({ stage: 'Reading the supplier and bill date', percent: 0 });
         try {
           const top = await ocr.read(pages[0], { x: 0, y: 0, w: 1, h: 0.4 }, (percent) => setBusy((b) => (b ? { ...b, percent } : b)));
@@ -275,10 +463,10 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
       }
       setRawText((t) => (t ? `${t}\n\n` : '') + text.trim());
       // An order: show the table as read, to match its columns to the order's.
-      const billTable = forOrder ? extractBillTable(layout) : null;
+      const billTable = tableMode ? extractBillTable(layout) : null;
       if (billTable?.rows.length) {
         setTable(billTable);
-        setColMap(autoMap(billTable.heads));
+        setColMap(autoMapTable(billTable, targets));
         setStep('map');
         return;
       }
@@ -292,8 +480,8 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
           : 'No items were read from the selected part. Make the box cover the item table from its header row (Rack, MFR, Item Description...) to the last item.');
         return;
       }
-      const have = new Set(rows.map((r) => compact(r.name)));
-      const added = found.filter((f) => !have.has(compact(f.name))).map((f) => newRow(f));
+      const have = new Set(rows.map(lineKey));
+      const added = found.filter((f) => !have.has(lineKey({ ...blankFields, ...f }))).map((f) => newRow(f));
       setRows((rs) => [...rs, ...added]);
       setTab('new');
       setStep('review');
@@ -311,13 +499,36 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
   };
 
   // 2b. (Orders) The columns are matched: the bill's lines go to the list.
+  // Every line on screen goes to the list, except repeats of Item Name + HSN +
+  // Batch (and lines with no item name).
   const applyColumns = () => {
-    const have = new Set(rows.map((r) => compact(r.name)));
+    // Stock In: the bill's lines (with an item name) go back to fill its rows.
+    // Three in One: every line with an item name, with the order's maths
+    // (Disc % read as a %, P.Rate / GST % from Amount, Total... when missing).
+    if (forIps) {
+      const blank = Object.fromEntries(IPS_TARGETS.map(([k]) => [k, '']));
+      onIpsLines?.(table.rows.map((cells) => ({ ...blank, ...fieldsOf(cells, colMap, IPS_TARGETS) })).filter((f) => compact(f.name)), { supplier });
+      return;
+    }
+    // Each placed column's value as read (no order maths: Stock In uses them).
+    if (forStock) {
+      const blank = Object.fromEntries(STOCK_TARGETS.map(([k]) => [k, '']));
+      const lines = table.rows.map((cells) => {
+        const o = { ...blank };
+        for (const [key] of STOCK_TARGETS) if (colMap[key] != null) o[key] = valueFor(key, cells[colMap[key]]);
+        return o;
+      }).filter((f) => compact(f.name));
+      onStockLines?.(lines);
+      return;
+    }
+    const have = new Set(rows.map(lineKey));
     const added = [];
+    let repeats = 0;
     for (const cells of table.rows) {
-      const f = fieldsOf(cells, colMap);
-      const k = compact(f.name);
-      if (!k || have.has(k)) continue;
+      const f = { ...blankFields, ...fieldsOf(cells, colMap) };
+      if (!compact(f.name)) continue;
+      const k = lineKey(f);
+      if (have.has(k)) { repeats += 1; continue; }
       have.add(k);
       added.push(newRow(f));
     }
@@ -325,7 +536,9 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
     setTab('new');
     setStep('review');
     setError('');
-    setSummary(rows.length ? `${added.length} more line${added.length === 1 ? '' : 's'} read from the bill.` : '');
+    const what = rows.length ? `${added.length} more line${added.length === 1 ? '' : 's'} read from the bill.` : '';
+    const skipped = repeats ? `${repeats} repeated line${repeats === 1 ? '' : 's'} (same Item Name, HSN and Batch) left out.` : '';
+    setSummary([what, skipped].filter(Boolean).join(' '));
   };
 
   // 3. Save the new items.
@@ -353,25 +566,35 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
     setSaving(true); setError(''); setSummary('');
     // Manufacturer and Category must be on their pick-lists: add the bill's
     // new ones (a value already there is just looked up).
-    const listed = { manufacturer: new Map(), category: new Map() };
+    const listed = { manufacturer: new Map(), category: new Map(), generic: new Map(), unit: new Map() };
     const listError = {};
     for (const f of forOrder ? Object.keys(listed) : []) {
       const names = [...new Set(todo.map((v) => v[f].trim().toUpperCase()).filter(Boolean))];
       for (const n of names) {
-        try {
-          listed[f].set(n, (await itemMasterApi.addListValue(f, n)).name);
-        } catch (err) {
-          listError[`${f}:${n}`] = err.response?.data?.error || `Couldn't add "${n}" to the ${f} list`;
+        // A second try for a slip of the network.
+        for (let tries = 0; tries < 2 && !listed[f].has(n); tries += 1) {
+          try {
+            listed[f].set(n, (await itemMasterApi.addListValue(f, n)).name);
+            delete listError[`${f}:${n}`];
+          } catch (err) {
+            const why = err.response?.data?.error || err.message;
+            listError[`${f}:${n}`] = `Couldn't add "${n}" to the ${{ category: 'Category (Batch)', manufacturer: 'Manufacturer', generic: 'Generic Name', unit: 'Type / Unit' }[f]} list${why ? `: ${why}` : ''}`;
+          }
         }
       }
     }
     let ok = 0;
     let failed = 0;
+    let firstError = '';
     const createdId = new Map(); // row id -> new ItemId
     for (const v of todo) {
-      const bad = ['manufacturer', 'category'].map((f) => listError[`${f}:${v[f].trim().toUpperCase()}`]).find(Boolean);
+      // The Batch is part of what makes the line its own item, so without it
+      // the item isn't saved; a Manufacturer that couldn't be listed is just
+      // left off the item (it can be set in Item Master later).
+      const bad = listError[`category:${v.category.trim().toUpperCase()}`];
       if (bad) {
         update(v.id, { result: { error: bad } });
+        firstError ||= bad;
         failed += 1;
         continue;
       }
@@ -385,25 +608,32 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
           pack: v.pack.trim(),
           mrp: String(v.mrp).trim(),
           manufacturer: listed.manufacturer.get(v.manufacturer.trim().toUpperCase()) || '',
+          generic: listed.generic.get(v.generic.trim().toUpperCase()) || '',
+          unit: listed.unit.get(v.unit.trim().toUpperCase()) || '',
           category: listed.category.get(v.category.trim().toUpperCase()) || '',
         });
         update(v.id, { result: { added: true, code: r.ItemCode, itemId: r.ItemId } });
         createdId.set(v.id, r.ItemId);
         ok += 1;
       } catch (err) {
-        update(v.id, { result: { error: err.response?.data?.error || 'Save failed' } });
+        const why = err.response?.data?.error || (err.message ? `Save failed: ${err.message}` : 'Save failed');
+        update(v.id, { result: { error: why } });
+        firstError ||= why;
         failed += 1;
       }
     }
+    // Manufacturer, Generic or Unit values that couldn't be listed (items saved without them).
+    const noMfr = Object.keys(listError).filter((k) => !k.startsWith('category:'));
     await loadItems().catch(() => {});
     setSaving(false);
     if (ok) onAdded?.(ok);
     if (forOrder) {
       if (failed) {
         setTab('new');
-        setSummary(`${ok} new item${ok === 1 ? '' : 's'} added to Item Master · ${failed} failed — fix the red rows (or delete them) and press the button again`);
+        setSummary(`${ok} new item${ok === 1 ? '' : 's'} added to Item Master · ${failed} failed (${firstError}) — fix the red rows (or delete them) and press the button again`);
         return;
       }
+      if (noMfr.length) setError(`${listError[noMfr[0]]} — those items were saved without it; set it in Item Master if needed.`);
       const byId = new Map(items.map((it) => [it.ItemId, it]));
       const lines = [];
       let inactive = 0;
@@ -430,12 +660,12 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
   const tabRows = view.filter((v) => v.tab === tab);
 
   return (
-    <Modal open={open} onClose={working ? () => {} : onClose} size="xl" title="Scan Purchase Bill">
+    <Modal open={open} onClose={working ? () => {} : onClose} size="xl" title={forIps ? 'Scan Bill · Three in One' : forStock ? 'Scan Stock Bill' : 'Scan Purchase Bill'}>
       <div className="space-y-3">
         <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
         <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" className="hidden" onChange={onFile} />
 
-        <Steps step={step} forOrder={forOrder} />
+        <Steps step={step} forOrder={tableMode} last={forIps ? 'Fill the table' : forStock ? 'Fill Stock In' : undefined} />
 
         {/* Step 1: pick the bill */}
         {step === 'pick' && !busy && (
@@ -443,7 +673,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
             <ScanLine size={28} className="text-brand-500" />
             <div className="text-sm text-ink-600">
               <p className="font-semibold text-ink-800">Upload the supplier&apos;s bill</p>
-              <p className="text-xs">A photo (JPG / PNG) or a PDF. Next you&apos;ll mark {forOrder ? 'the item table on it, header row included' : 'the Item Description column on it'}.</p>
+              <p className="text-xs">A photo (JPG / PNG) or a PDF. Next you&apos;ll mark {tableMode ? 'the item table on it, header row included' : 'the Item Description column on it'}.</p>
             </div>
             <div className="flex w-full max-w-sm gap-2">
               <button type="button" className="btn-secondary min-w-0 flex-1 whitespace-nowrap px-2 sm:hidden" disabled={!itemsReady} onClick={() => photoRef.current?.click()}>
@@ -465,7 +695,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-ink-600">
-                {forOrder
+                {tableMode
                   ? <><b className="text-ink-800">Drag a box around the item table, header row included</b> — from the column headings (Rack, MFR, Item Description, HSNCODE, Batch, Pack, MRP, qty) to the last item. Only that part is read.</>
                   : <><b className="text-ink-800">Drag a box around the Item Description column</b> — from the first item name to the last (or the whole item table, header row included). Only that part is read.</>}
               </p>
@@ -493,7 +723,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
               </div>
             </div>
 
-            <BoxSelect page={page} box={box} onBox={setBox} disabled={working} zoom={zoom} moving={moving} forOrder={forOrder} />
+            <BoxSelect page={page} box={box} onBox={setBox} disabled={working} zoom={zoom} moving={moving} forOrder={tableMode} />
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 pt-3">
               <div className="flex flex-wrap gap-2">
@@ -516,7 +746,7 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
                   <Sparkles size={16} /> Read Whole Page
                 </button>
                 <button type="button" className="btn-primary" disabled={working || !box} onClick={() => read(false)}>
-                  <Crop size={16} /> {box ? 'Read Selected Area' : forOrder ? 'Select the item table first' : 'Select the column first'}
+                  <Crop size={16} /> {box ? 'Read Selected Area' : tableMode ? 'Select the item table first' : 'Select the column first'}
                 </button>
               </div>
             </div>
@@ -529,10 +759,18 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
             table={table}
             map={colMap}
             setMap={setColMap}
+            onRemoveCol={(i) => {
+              // Drop the bill's column i; tiles on the columns after it move along with them.
+              setTable((t) => ({ heads: t.heads.filter((_, c) => c !== i), rows: t.rows.map((r) => r.filter((_, c) => c !== i)) }));
+              setColMap((m) => Object.fromEntries(Object.entries(m).filter(([, c]) => c !== i).map(([k, c]) => [k, c > i ? c - 1 : c])));
+            }}
             disabled={working}
             onBack={() => setStep('select')}
             onDone={applyColumns}
             hasRows={rows.length > 0}
+            targets={targets}
+            forStock={forStock}
+            forIps={forIps}
           />
         )}
 
@@ -622,8 +860,8 @@ export default function ScanBillModal({ open, onClose, onAdded, forOrder = false
   );
 }
 
-function Steps({ step, forOrder }) {
-  const all = [['pick', 'Upload'], ['select', 'Select table'], ...(forOrder ? [['map', 'Match columns']] : []), ['review', 'Review & add']];
+function Steps({ step, forOrder, last = 'Review & add' }) {
+  const all = [['pick', 'Upload'], ['select', 'Select table'], ...(forOrder ? [['map', 'Match columns']] : []), ['review', last]];
   const at = all.findIndex(([k]) => k === step);
   return (
     <ol className="flex items-center gap-2 text-[11px] font-semibold">
@@ -726,13 +964,13 @@ function BoxSelect({ page, box, onBox, disabled, zoom = 1, moving = false, forOr
 // tile, then the column — or the column, then the tile — for a phone). A
 // column holds one tile and a tile sits on one column; dropping a tile that's
 // already placed moves it. Tiles that clearly match are placed already.
-function ColumnMatch({ table, map, setMap, disabled, onBack, onDone, hasRows }) {
+function ColumnMatch({ table, map, setMap, onRemoveCol, disabled, onBack, onDone, hasRows, targets = TARGETS, forStock = false, forIps = false }) {
   // Tapped and waiting for its partner: { tile: key } or { col: index }.
   const [picked, setPicked] = useState(null);
   const [over, setOver] = useState(null); // column a tile is being dragged over
   const { heads, rows } = table;
-  const tiles = TARGETS.filter(([, , , auto]) => !auto);
-  const label = Object.fromEntries(TARGETS.map(([k, l]) => [k, l]));
+  const tiles = targets;
+  const label = Object.fromEntries(targets.map(([k, l]) => [k, l]));
   const tileOn = (i) => Object.keys(map).find((k) => map[k] === i);
   const place = (key, i) => {
     setMap((m) => {
@@ -777,60 +1015,8 @@ function ColumnMatch({ table, map, setMap, disabled, onBack, onDone, hasRows }) 
       </p>
 
       <div>
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-500">Read from the bill · {rows.length} line{rows.length === 1 ? '' : 's'}</p>
-        <div className="max-h-[42vh] overflow-auto rounded-lg border border-ink-200">
-          <table className="w-full table-fixed border-collapse text-left text-[12px]" style={{ minWidth: 40 + heads.reduce((s, _, i) => s + width(i), 0) }}>
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-ink-50">
-                <th className={`${hd} w-10 text-ink-400`}>#</th>
-                {heads.map((_, i) => {
-                  const key = tileOn(i);
-                  const active = over === i || picked?.col === i;
-                  return (
-                    <th
-                      key={i}
-                      style={{ width: width(i) }}
-                      className={`${hd} !p-1 ${disabled ? '' : 'cursor-pointer'} ${active ? '!bg-brand-100' : ''} ${picked?.tile && !key ? 'ring-1 ring-inset ring-brand-300' : ''}`}
-                      title={key ? `Fills ${label[key]} on the order` : 'Drop a tile here'}
-                      onClick={() => tapCol(i)}
-                      {...dropProps(i)}
-                    >
-                      {key ? (
-                        <span
-                          className="flex items-center justify-between gap-1 rounded-md bg-brand-600 px-1.5 py-1 text-[11px] font-bold text-white shadow-sm"
-                          draggable={!disabled}
-                          onDragStart={dragTile(key)}
-                        >
-                          <span className="truncate">{label[key]}</span>
-                          <button type="button" className="shrink-0 rounded text-white/70 hover:text-white" title="Remove" disabled={disabled} onClick={(e) => { e.stopPropagation(); clear(key); }}><X size={12} /></button>
-                        </span>
-                      ) : (
-                        <span className={`block rounded-md border border-dashed px-1.5 py-1 text-[11px] font-medium ${active ? 'border-brand-400 text-brand-600' : 'border-ink-300 text-ink-400'}`}>
-                          {picked?.col === i ? 'Now tap a tile' : 'Drop a tile'}
-                        </span>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((cells, r) => (
-                <tr key={r}>
-                  <td className={`${cell} text-center text-ink-400`}>{r + 1}</td>
-                  {cells.map((t, i) => (
-                    <td key={i} className={`${cell} px-1.5 ${tileOn(i) ? 'text-ink-800' : 'text-ink-400'} ${over === i ? 'bg-brand-50' : ''}`} {...dropProps(i)}>{t}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div>
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
-          Order columns · {matched} placed
+          {forIps ? 'Item · Purchase · Stock columns' : forStock ? 'Stock In columns' : 'Order columns'} · {matched} placed
           {picked?.tile && <span className="ml-1 normal-case tracking-normal text-brand-700">— now tap the column for “{label[picked.tile]}”</span>}
         </p>
         <div className="flex flex-wrap gap-2">
@@ -858,7 +1044,80 @@ function ColumnMatch({ table, map, setMap, disabled, onBack, onDone, hasRows }) 
             );
           })}
         </div>
-        <p className="mt-1.5 text-[11px] text-ink-400">Unit, Old Price, Amount, GST Amt and Total are filled in on the order. Manufacturer, HSN and Rack are saved on new items.</p>
+        <p className="mt-1.5 text-[11px] text-ink-400">{forIps
+          ? 'The lines fill the Three in One table: Item Master columns (new items are added on save), Purchase / Order columns (P.Rate = MRP less Disc %; Amount or Old Price give the rate, GST Amt or Total the GST %, when missing) and Stock In columns (Batch No, dates as MM/YY, S.Disc %, Sel.Amount). Category is used as the Batch No when there is no Batch No column.'
+          : forStock
+          ? 'Each bill line fills the Stock In row of the same item on the order: Batch No, Mf.Date, Exp.Date, R.Order, R.Free and S.Disc%. Received (split into R.Order + R.Free) or Amount give R.Order when there is no R.Order column; Sel.Amount or Unit Price give S.Disc% of the MRP. The order\'s own columns (Pack, Unit, MRP, P.Rate, Disc%, GST, Ordered, Free) help pick the row when names are alike. Dates like 2/28 or 12/2027 are read as MM/YY. Lines not on the order are listed, not added.'
+          : <>Generic, Manufacturer, HSN, Category, Pack, Unit and Rack are saved on new items. Amount or Old Price give the P.Rate, and GST Amt or Total the GST %, when the bill has no such column; the order works out its own Amount, GST Amt and Total. A discount printed as an amount is turned into Disc % (of MRP); one that can&apos;t be worked out is left blank.</>}</p>
+      </div>
+
+      <div>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-500">Read from the bill · {rows.length} line{rows.length === 1 ? '' : 's'}</p>
+        <div className="max-h-[42vh] overflow-auto rounded-lg border border-ink-200">
+          <table className="w-full table-fixed border-collapse text-left text-[12px]" style={{ minWidth: 40 + heads.reduce((s, _, i) => s + width(i), 0) }}>
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-ink-50">
+                <th className={`${hd} w-10 text-ink-400`}>#</th>
+                {heads.map((_, i) => {
+                  const key = tileOn(i);
+                  const active = over === i || picked?.col === i;
+                  return (
+                    <th
+                      key={i}
+                      style={{ width: width(i) }}
+                      className={`${hd} !p-1 ${disabled ? '' : 'cursor-pointer'} ${active ? '!bg-brand-100' : ''} ${picked?.tile && !key ? 'ring-1 ring-inset ring-brand-300' : ''}`}
+                      title={key ? `Fills ${label[key]} on the ${forIps ? 'table' : forStock ? 'Stock In' : 'order'}` : 'Drop a tile here'}
+                      onClick={() => tapCol(i)}
+                      {...dropProps(i)}
+                    >
+                      {key ? (
+                        <span
+                          className="flex items-center justify-between gap-1 rounded-md bg-brand-600 px-1.5 py-1 text-[11px] font-bold text-white shadow-sm"
+                          draggable={!disabled}
+                          onDragStart={dragTile(key)}
+                        >
+                          <span className="truncate">{label[key]}</span>
+                          <button type="button" className="shrink-0 rounded text-white/70 hover:text-white" title="Remove" disabled={disabled} onClick={(e) => { e.stopPropagation(); clear(key); }}><X size={12} /></button>
+                        </span>
+                      ) : (
+                        <span className={`block rounded-md border border-dashed px-1.5 py-1 text-[11px] font-medium ${active ? 'border-brand-400 text-brand-600' : 'border-ink-300 text-ink-400'}`}>
+                          {picked?.col === i ? 'Now tap a tile' : 'Drop a tile'}
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+              {/* Remove a column read from the bill that isn't wanted (or was read wrong). */}
+              <tr className="bg-ink-50">
+                <th className={`${hd} !py-0.5`} />
+                {heads.map((_, i) => (
+                  <th key={i} className={`${hd} !py-0.5`}>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-ink-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                      title="Remove this column"
+                      disabled={disabled || heads.length <= 1}
+                      onClick={() => { setPicked(null); setOver(null); onRemoveCol(i); }}
+                    >
+                      <Trash2 size={11} /> Remove
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((cells, r) => (
+                <tr key={r}>
+                  <td className={`${cell} text-center text-ink-400`}>{r + 1}</td>
+                  {cells.map((t, i) => (
+                    <td key={i} className={`${cell} px-1.5 ${tileOn(i) ? 'text-ink-800' : 'text-ink-400'} ${over === i ? 'bg-brand-50' : ''}`} {...dropProps(i)}>{t}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 pt-3">
@@ -869,7 +1128,7 @@ function ColumnMatch({ table, map, setMap, disabled, onBack, onDone, hasRows }) 
         <div className="flex flex-wrap items-center gap-2">
           {map.name == null && <p className="text-[11px] font-medium text-amber-700">Place the Item Name tile on the item name column first.</p>}
           <button type="button" className="btn-primary" disabled={disabled || !names} onClick={onDone}>
-            <Plus size={16} /> Add {names} Line{names === 1 ? '' : 's'} to the {hasRows ? 'List' : 'Review'}
+            <Plus size={16} /> {forIps ? `Fill the Table with ${names} Line${names === 1 ? '' : 's'}` : forStock ? `Fill Stock In from ${names} Line${names === 1 ? '' : 's'}` : `Add ${names} Line${names === 1 ? '' : 's'} to the ${hasRows ? 'List' : 'Review'}`}
           </button>
         </div>
       </div>
@@ -965,7 +1224,9 @@ function ItemGrid({ tab, rows, disabled, update, remove, addAfter, cols: fields,
                       >
                         {v.m.similar.map((s) => (
                           <option key={s.item.ItemId} value={s.item.ItemId}>
-                            {s.item.Name} ({code(s.item)}) · {Math.round(s.chars * 100)}% alike
+                            {s.item.Name} ({code(s.item)}) · {s.twin
+                              ? `same name · HSN ${s.item.HSNCode || '—'} · Batch ${s.item.Category || '—'}`
+                              : `${Math.round(s.chars * 100)}% alike`}
                           </option>
                         ))}
                         <option value={NEW}>➕ Not the same — add as a new item</option>
@@ -981,7 +1242,7 @@ function ItemGrid({ tab, rows, disabled, update, remove, addAfter, cols: fields,
                     <td className={`${cell} px-2`}>
                       {v.status === 'added' && <span className="font-medium text-emerald-700">Added now · {v.result.code}</span>}
                       {v.status === 'exists' && <span className="text-ink-600">{v.m.exact.Name} <span className="text-ink-400">({code(v.m.exact)}){v.m.exact.Status === 'Inactive' ? ' · Inactive' : ''}</span></span>}
-                      {v.status === 'dup' && <span className="text-ink-400">Repeated on the bill</span>}
+                      {v.status === 'dup' && <span className="text-ink-400">Repeated on the bill (same Item Name, HSN and Batch as line {v.dupOf})</span>}
                     </td>
                     {extraCells(v, r)}
                   </>

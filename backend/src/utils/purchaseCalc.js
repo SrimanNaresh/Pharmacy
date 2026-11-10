@@ -1,8 +1,9 @@
 // Purchase / Order line formulas. The same file is in
 // frontend/src/utils/purchaseCalc.js so the screen and the server work out
 // every line the same way — keep the two copies identical.
-//   Cur.Rate     = P.Rate - (P.Rate x Disc % / 100)
-//   Amount       = Quantity x Cur.Rate (Free units aren't charged)
+//   P.Rate       = MRP - (MRP x Disc % / 100)   (Disc % is the discount off the MRP)
+//   Amount       = Quantity x P.Rate (Free units aren't charged; the discount
+//                  is already in the P.Rate, so it isn't taken off again)
 //   GST %        = CGST % + SGST %
 //   GST Amount   = Amount / 100 x GST %
 //   Total Amount = Amount + GST Amount
@@ -11,9 +12,13 @@
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
 
+// P.Rate from the MRP and Disc %: e.g. MRP 140, Disc 40 % -> 84.
+export const pRateOf = (mrp, discPercent) => round2(num(mrp) - (num(mrp) * num(discPercent)) / 100);
+
+// discPercent is taken (callers pass the whole line) but already in the P.Rate.
+// eslint-disable-next-line no-unused-vars
 export function purchaseLine({ pRate, discPercent, quantity, cgstPercent, sgstPercent }) {
-  const p = num(pRate);
-  const rate = round2(p - (p * num(discPercent)) / 100);
+  const rate = round2(num(pRate));
   const amount = round2(num(quantity) * rate);
   const gstPercent = round2(num(cgstPercent) + num(sgstPercent));
   const gstAmount = round2((amount / 100) * gstPercent);

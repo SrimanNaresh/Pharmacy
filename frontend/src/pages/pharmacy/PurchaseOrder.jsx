@@ -9,9 +9,9 @@ import { useToast } from '../../hooks/useToast.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import ItemFormModal from './ItemFormModal.jsx';
 import ScanBillModal from './ScanBillModal.jsx';
-import { likeness } from '../../utils/billScan.js';
+import { compact, likeness } from '../../utils/billScan.js';
 import { itemMasterApi, purchaseOrderApi, vendorApi } from '../../api/client.js';
-import { purchaseLine, purchaseTotal, roundOffOf } from '../../utils/purchaseCalc.js';
+import { pRateOf, purchaseLine, purchaseTotal, round2, roundOffOf } from '../../utils/purchaseCalc.js';
 
 const MAX_GST = 28;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -51,9 +51,38 @@ const splitGst = (gst) => {
   return { gst, cgst: half, sgst: half };
 };
 
+// P.Rate = MRP less Disc %. Typing the MRP or Disc % works out the P.Rate;
+// typing the P.Rate works out the Disc % (from the MRP). -> the line's patch.
+const priced = (l, key, value) => {
+  const next = { ...l, [key]: value };
+  const mrp = Number(next.mrp);
+  if (!(mrp > 0)) return { [key]: value };
+  if (key === 'pRate') {
+    if (value === '') return { pRate: value };
+    const d = round2((1 - Number(value) / mrp) * 100);
+    return { pRate: value, disc: d > 0 && d <= 100 ? String(d) : '' };
+  }
+  if (next.disc === '' && key === 'mrp') return { mrp: value };
+  return { [key]: value, pRate: String(pRateOf(next.mrp, next.disc)) };
+};
+
 const calcOf = (l) => purchaseLine({ pRate: l.pRate, discPercent: l.disc, quantity: l.qty, cgstPercent: l.cgst, sgstPercent: l.sgst });
 
 // A line's problem on screen (the server checks the same), or null.
+// What makes two order lines the same entry: Item Name + HSN + Batch
+// (Category). The same item twice, or two items alike in all three, is a
+// duplicate; the same name in another batch is its own line.
+const entryKey = (l, itemById) => {
+  const name = compact(itemById.get(l.itemId)?.Name || '');
+  if (!name) return '';
+  return `${name}|${String(l.hsn || '').replace(/\D/g, '')}|${String(l.category || '').toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
+};
+// The line (other than `l` itself) that's the same entry as `l`, or undefined.
+const duplicateOf = (l, lines, itemById) => {
+  const k = entryKey(l, itemById);
+  return lines.find((o) => o.key !== l.key && o.itemId && (o.itemId === l.itemId || (k && entryKey(o, itemById) === k)));
+};
+
 function lineProblem(l) {
   if (!l.itemId) return null;
   if (!(Number(l.qty) > 0)) return 'Quantity must be more than 0';
@@ -115,7 +144,7 @@ export default function PurchaseOrder() {
   const [newVendor, setNewVendor] = useState(null);
   // Bulk add panel: null or { search, category, manufacturer, ticked: Set }.
   const [bulk, setBulk] = useState(null);
-  // Old Price: { itemId: last net rate (P.Rate less Disc %) from the chosen vendor }.
+  // Old Price: { itemId: last P.Rate (MRP less Disc %) from the chosen vendor }.
   const [lastRates, setLastRates] = useState({});
   // Add / Edit item popup from the Item Name list: null or { name } / { id }, plus the row it came from.
   const [itemForm, setItemForm] = useState(null);
@@ -202,7 +231,7 @@ export default function PurchaseOrder() {
     if (!draft.itemId) return show('Pick an item first', 'error');
     const problem = lineProblem(draft);
     if (problem) return show(problem, 'error');
-    if (lines.some((l) => l.itemId === draft.itemId && l.key !== draft.key)) return show('This item is already in the list — edit it there', 'error');
+    if (duplicateOf(draft, lines, itemById)) return show('This item (same Item Name, HSN and Batch) is already in the list — edit it there', 'error');
     setLines((ls) => (draftEditing
       ? ls.map((l) => (l.key === draft.key ? draft : l))
       : [...ls.filter((l) => l.itemId), draft]));
@@ -223,7 +252,13 @@ export default function PurchaseOrder() {
   };
   const pickItem = (key, itemId) => {
     const it = itemById.get(itemId);
-    if (it) setLines((ls) => ls.map((l) => (l.key === key ? { ...lineFromItem(it), key, lineId: null } : l)));
+    if (!it) return;
+    const dup = duplicateOf({ ...lineFromItem(it), key }, lines, itemById);
+    if (dup) {
+      show(`${it.Name} (same Item Name, HSN and Batch) is already on row ${lines.indexOf(dup) + 1} — change its Qty there`, 'error');
+      return;
+    }
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...lineFromItem(it), key, lineId: null } : l)));
   };
 
   // New / Edit / Delete from a row's Item Name list.
@@ -334,16 +369,16 @@ export default function PurchaseOrder() {
       show('Failed to reload items', 'error');
     }
     const byId = new Map(list.map((i) => [String(i.ItemId), i]));
-    const have = new Set(lines.map((l) => l.itemId).filter(Boolean));
-    if (draft.itemId) have.add(draft.itemId);
+    // Lines already on the order (and the one being entered): a bill line
+    // that's the same entry (same item, or same Item Name + HSN + Batch) is left out.
+    const taken = [...lines.filter((l) => l.itemId), ...(draft.itemId ? [draft] : [])];
     const fresh = [];
     let already = 0;
     for (const s of scanned) {
       const it = byId.get(String(s.itemId));
       if (!it) continue;
-      if (have.has(String(it.ItemId))) { already += 1; continue; }
-      have.add(String(it.ItemId));
       const line = lineFromItem(it);
+      if (duplicateOf(line, [...taken, ...fresh], byId)) { already += 1; continue; }
       if (Number(s.qty) > 0) line.qty = s.qty;
       if (s.mrp !== '' && Number(s.mrp) >= 0) line.mrp = numStr(s.mrp);
       // The bill's P.Rate, Free, Disc % and GST %, when its columns were matched.
@@ -352,6 +387,10 @@ export default function PurchaseOrder() {
       if (given(s.free)) line.free = numStr(s.free);
       if (given(s.disc) && Number(s.disc) <= 100) line.disc = numStr(s.disc);
       if (given(s.gst) && Number(s.gst) <= 100) Object.assign(line, splitGst(numStr(s.gst)));
+      // P.Rate = MRP less Disc %: from the bill's Disc %, or (no Disc % on it)
+      // the Disc % worked out from its rate.
+      if (line.disc !== '') Object.assign(line, priced(line, 'disc', line.disc));
+      else if (Number(line.pRate) > 0) Object.assign(line, priced(line, 'pRate', line.pRate));
       fresh.push(line);
     }
     const noRate = fresh.filter((l) => !(Number(l.pRate) > 0)).length;
@@ -376,6 +415,21 @@ export default function PurchaseOrder() {
   };
 
   const filled = lines.filter((l) => l.itemId);
+  // A repeated entry (the same item, or the same Item Name + HSN + Batch as a
+  // row above it) is removed straight away — no confirm; the first row stays.
+  useEffect(() => {
+    if (!itemById.size) return;
+    const repeats = new Set();
+    const kept = [];
+    for (const l of lines) {
+      if (!l.itemId) continue;
+      if (duplicateOf(l, kept, itemById)) repeats.add(l.key); else kept.push(l);
+    }
+    if (!repeats.size) return;
+    setLines((ls) => ls.filter((l) => !repeats.has(l.key)));
+    setDraft((d) => (repeats.has(d.key) ? emptyLine() : d));
+    show(`Removed ${repeats.size} duplicate row${repeats.size === 1 ? '' : 's'} (same Item Name, HSN and Batch)`, 'success');
+  }, [lines, itemById]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const page = pageRef.current;
     const main = page?.closest('main');
@@ -386,7 +440,11 @@ export default function PurchaseOrder() {
     const fixedParts = page.scrollHeight - (areaRef.current?.offsetHeight || 0);
     setFitHeight(fixedParts + MIN_AREA <= available ? available : null);
   }, [screenSize, poTab, bulk, showDetails, newVendor, editing, filled.length, draft.itemId]);
-  const problems = new Map(filled.map((l) => [l.key, lineProblem(l)]).filter(([, p]) => p));
+  // Row problems, and a repeated entry (same item, or same Item Name + HSN + Batch) — the later row is marked.
+  const problems = new Map(filled.map((l, i) => {
+    const dup = duplicateOf(l, filled.slice(0, i), itemById);
+    return [l.key, lineProblem(l) || (dup && `Same Item Name, HSN and Batch as row ${filled.indexOf(dup) + 1} — remove one, or add the Qty there`)];
+  }).filter(([, p]) => p));
   const total = purchaseTotal(filled.map((l) => ({ pRate: l.pRate, discPercent: l.disc, quantity: l.qty, cgstPercent: l.cgst, sgstPercent: l.sgst })));
   const roundOff = roundOn ? roundOffOf(total) : 0;
   const netAmount = total + roundOff;
@@ -580,7 +638,7 @@ export default function PurchaseOrder() {
               const bad = l.itemId ? lineProblem(l) : null;
               const setD = (patch) => setDraft((d) => ({ ...d, ...patch }));
               // Three rows of five, in the order table's column order, lined up as columns:
-              // Category · Pack · Unit · MRP · Old Price / P.Rate · Free · Disc % · Qty · Amount /
+              // Category · Pack · Unit · MRP · Old Price / Disc % · P.Rate · Qty · Free · Amount /
               // GST % · CGST % · SGST % · GST Amt · Total. Boxes are editable; the shaded ones are shown only.
               const fit = (v) => {
                 const n = String(v ?? '').length;
@@ -621,12 +679,12 @@ export default function PurchaseOrder() {
                         {show('Category', l.category)}
                         {show('Pack', l.pack)}
                         {show('Unit', l.unit)}
-                        {num('MRP', 'mrp')}
+                        {num('MRP', 'mrp', { onChange: (v) => priced(l, 'mrp', v) })}
                         {show('Old Price', money(lastRates[l.itemId] ?? 0), '!bg-amber-50 text-amber-800')}
-                        {num('P.Rate', 'pRate', { className: Number(l.pRate) > Number(l.mrp) ? '!border-red-400 bg-red-50 text-red-700' : '' })}
-                        {num('Free', 'free')}
-                        {num('Disc %', 'disc')}
+                        {num('Disc %', 'disc', { onChange: (v) => priced(l, 'disc', v) })}
+                        {num('P.Rate', 'pRate', { onChange: (v) => priced(l, 'pRate', v), className: Number(l.pRate) > Number(l.mrp) ? '!border-red-400 bg-red-50 text-red-700' : '' })}
                         {num('Qty', 'qty')}
+                        {num('Free', 'free')}
                         {show('Amount', money(c.amount))}
                         {num('GST %', 'gst', { onChange: splitGst })}
                         {num('CGST %', 'cgst', { onChange: (v) => ({ cgst: v, gst: sumStr(v || null, l.sgst || null) }) })}
@@ -723,11 +781,11 @@ export default function PurchaseOrder() {
                   <th className={`${hd} w-[4.5%]`}>Pack</th>
                   <th className={`${hd} w-[4.5%]`} title="Type / Unit from Item Master">Unit</th>
                   <th className={`${hd} w-[5.5%]`}>MRP</th>
-                  <th className={`${hd} w-[5.5%]`} title="Last rate from this vendor, after its discount (P.Rate less Disc %); 0 if never ordered from them">Old Price</th>
-                  <th className={`${hd} w-[5.5%]`} title="Purchase rate — Disc % applies to it">P.Rate</th>
-                  <th className={`${hd} w-[4%]`} title="Free units — not charged, received with the rest">Free</th>
+                  <th className={`${hd} w-[5.5%]`} title="This vendor's P.Rate on the last order (MRP less Disc %); 0 if never ordered from them">Old Price</th>
                   <th className={`${hd} w-[4%]`}>Disc%</th>
+                  <th className={`${hd} w-[5.5%]`} title="Purchase rate = MRP less Disc % (type either one)">P.Rate</th>
                   <th className={`${hd} w-[5%]`}>Qty</th>
+                  <th className={`${hd} w-[4%]`} title="Free units — not charged, received with the rest">Free</th>
                   <th className={`${hd} w-[6%]`}>Amount</th>
                   {!showOptional && (
                     <>
@@ -757,12 +815,12 @@ export default function PurchaseOrder() {
                       <td className={`${cell} px-1.5`}>{l.category}</td>
                       <td className={`${cell} px-1.5`}>{l.pack}</td>
                       <td className={`${cell} px-1.5`}>{l.unit}</td>
-                      <td className={cell}><input type="number" min="0" step="0.01" data-r={r} data-c={1} className={numBox} value={l.mrp} disabled={!l.itemId} onChange={(e) => setLine(l.key, { mrp: e.target.value })} /></td>
+                      <td className={cell}><input type="number" min="0" step="0.01" data-r={r} data-c={1} className={numBox} value={l.mrp} disabled={!l.itemId} onChange={(e) => setLine(l.key, priced(l, 'mrp', e.target.value))} /></td>
                       <td className={`${cell} ${ro}`}>{l.itemId ? money(lastRates[l.itemId] ?? 0) : ''}</td>
-                      <td className={cell}><input type="number" min="0" step="0.01" data-r={r} data-c={2} className={`${numBox} ${Number(l.pRate) > Number(l.mrp) ? 'border-red-400 bg-red-50 text-red-700' : ''}`} value={l.pRate} disabled={!l.itemId} onChange={(e) => setLine(l.key, { pRate: e.target.value })} /></td>
-                      <td className={cell}><input type="number" min="0" step="any" data-r={r} data-c={3} className={numBox} value={l.free} disabled={!l.itemId} onChange={(e) => setLine(l.key, { free: e.target.value })} /></td>
-                      <td className={cell}><input type="number" min="0" max="100" step="0.01" data-r={r} data-c={4} className={numBox} value={l.disc} disabled={!l.itemId} onChange={(e) => setLine(l.key, { disc: e.target.value })} /></td>
-                      <td className={cell}><input type="number" min="0" step="any" data-r={r} data-c={5} className={numBox} value={l.qty} disabled={!l.itemId} onChange={(e) => setLine(l.key, { qty: e.target.value })} /></td>
+                      <td className={cell}><input type="number" min="0" max="100" step="0.01" data-r={r} data-c={2} className={numBox} value={l.disc} disabled={!l.itemId} onChange={(e) => setLine(l.key, priced(l, 'disc', e.target.value))} /></td>
+                      <td className={cell}><input type="number" min="0" step="0.01" data-r={r} data-c={3} className={`${numBox} ${Number(l.pRate) > Number(l.mrp) ? 'border-red-400 bg-red-50 text-red-700' : ''}`} value={l.pRate} disabled={!l.itemId} onChange={(e) => setLine(l.key, priced(l, 'pRate', e.target.value))} /></td>
+                      <td className={cell}><input type="number" min="0" step="any" data-r={r} data-c={4} className={numBox} value={l.qty} disabled={!l.itemId} onChange={(e) => setLine(l.key, { qty: e.target.value })} /></td>
+                      <td className={cell}><input type="number" min="0" step="any" data-r={r} data-c={5} className={numBox} value={l.free} disabled={!l.itemId} onChange={(e) => setLine(l.key, { free: e.target.value })} /></td>
                       <td className={`${cell} ${ro}`}>{l.itemId ? money(c.amount) : ''}</td>
                       {!showOptional && (
                         <>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { PackagePlus, Save, X, List, ChevronRight, ChevronLeft, ChevronDown, Lock } from 'lucide-react';
+import { PackagePlus, Save, X, List, ChevronRight, ChevronLeft, ChevronDown, Lock, ScanLine } from 'lucide-react';
+import ScanBillModal from './ScanBillModal.jsx';
+import { buildIndex, compact, matchName } from '../../utils/billScan.js';
 import { CardHeader, Toast } from '../../components/ui.jsx';
 import SearchPick from '../../components/grid/SearchPick.jsx';
 import { gridKeys } from '../../components/grid/gridKeys.js';
@@ -194,6 +196,62 @@ export default function StockIn() {
     setFill(emptyFill);
   };
 
+  // Scan Stock Bill: each bill line fills the row of the same item on the
+  // order — Batch No, Mf.Date, Exp.Date, R.Order, R.Free, S.Disc % (only what
+  // the bill has). R.Order can also come from Received (split like typing it)
+  // or Amount (/ the order's rate); S.Disc % from Sel.Amount or Unit Price.
+  // Matched by Item Name: the same name, else a very alike one; when several
+  // rows are alike, the one whose order figures (Pack, MRP, P.Rate, Batch...)
+  // agree with the line. A row takes one bill line; lines not matched are listed.
+  const [scanOpen, setScanOpen] = useState(false);
+  const fillFromBill = (billLines) => {
+    setScanOpen(false);
+    const next = rows.map((r) => ({ ...r }));
+    const used = new Set();
+    const notOnOrder = [];
+    let filled = 0;
+    const digits = (s) => String(s || '').replace(/\D/g, '');
+    const code = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (const b of billLines) {
+      const free = next.map((r, i) => ({ Name: r.ItemName, i, r })).filter((x) => !used.has(x.i));
+      const m = matchName(b.name, buildIndex(free));
+      const alike = m.exact ? free.filter((x) => compact(x.Name) === compact(b.name))
+        : m.likely ? [m.likely] : m.similar.filter((s) => s.chars >= 0.7).map((s) => s.item);
+      const same = (a, v) => a !== '' && a != null && v != null && Number(a) === Number(v);
+      const agree = (x) => [
+        digits(b.hsnCode) && digits(x.r.HSNCode) === digits(b.hsnCode),
+        code(b.category) && code(x.r.Category) === code(b.category),
+        code(b.pack) && code(x.r.Pack) === code(b.pack),
+        same(b.mrp, x.r.MRP), same(b.pRate, x.r.PRate), same(b.disc, x.r.DiscPercent),
+        same(b.ordered, x.r.Ordered), same(b.freeOrdered, x.r.FreeOrdered),
+      ].filter(Boolean).length;
+      const hit = [...alike].sort((x, y) => agree(y) - agree(x))[0];
+      // Only an alike (not same) name with nothing else agreeing is too weak a match.
+      if (!hit || (!m.exact && !m.likely && !agree(hit))) { notOnOrder.push(b.name); continue; }
+      used.add(hit.i);
+      const r = next[hit.i];
+      if (b.category) r.batchNo = b.category;
+      if (b.mfg) r.mfg = b.mfg;
+      if (b.exp) r.exp = b.exp;
+      const given = (v) => v !== '' && v != null && Number(v) >= 0;
+      if (given(b.received) && b.qty === '' && b.free === '') Object.assign(r, splitReceived(r, b.received));
+      if (given(b.qty)) r.qty = String(Number(b.qty));
+      else if (given(b.amount) && Number(r.Rate) > 0 && b.received === '') {
+        const q = Number(b.amount) / Number(r.Rate);
+        if (Math.abs(q - Math.round(q)) < 0.02) r.qty = String(Math.round(q)); // only a whole number of packs
+      }
+      if (given(b.free)) r.free = String(Number(b.free));
+      // S.Disc %: as printed, else from the selling price (per pack, or per piece x pieces in the pack).
+      const sel = given(b.sel) ? Number(b.sel) : given(b.unitPrice) ? Number(b.unitPrice) * unitsPerPack(r.Pack, r.Unit) : null;
+      if (given(b.sDisc) && Number(b.sDisc) <= 100) r.disc = String(Number(b.sDisc));
+      else if (sel != null && Number(r.MRP) > 0 && sel <= Number(r.MRP)) r.disc = String(round2((1 - sel / Number(r.MRP)) * 100));
+      filled += 1;
+    }
+    setRows(next);
+    const left = notOnOrder.length ? ` · ${notOnOrder.length} not on this order: ${notOnOrder.slice(0, 3).join(', ')}${notOnOrder.length > 3 ? '...' : ''}` : '';
+    show(`Filled ${filled} row${filled === 1 ? '' : 's'} from the bill${left} — check them before saving`, filled ? 'success' : 'error');
+  };
+
   // Phones: fit the page to the screen so only the item cards scroll.
   const { pageRef, areaRef, footerRef, fit } = usePhoneFit([rows.length, ticked > 0, editing, orderId]);
 
@@ -271,7 +329,20 @@ export default function StockIn() {
             icon={PackagePlus}
             title={editing ? `Edit Stock In · ${editing.no}` : 'Stock In'}
             subtitle={<span className="hidden md:inline">Goods received against a purchase order — adds stock and sets the selling price</span>}
-            actions={<button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/stock-in-list')}><List size={16} /> View List</button>}
+            actions={(
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  title={rows.length ? "Read the supplier's bill to fill Batch, dates and quantities" : 'Pick the vendor and order first'}
+                  disabled={!!locked}
+                  onClick={() => (rows.length ? setScanOpen(true) : show('Pick the vendor and the order first, then scan its bill', 'error'))}
+                >
+                  <ScanLine size={16} /> Scan Stock Bill
+                </button>
+                <button type="button" className="btn-secondary hidden md:inline-flex" onClick={() => navigate('/pharmacy/stock-in-list')}><List size={16} /> View List</button>
+              </div>
+            )}
           />
 
           {locked && (
@@ -364,7 +435,7 @@ export default function StockIn() {
                   <div className="space-y-1.5 p-2">
                     <div className="grid gap-1.5" style={{ gridTemplateColumns: '1fr 1fr 0.65fr 0.65fr 1.6fr' }}>
                       {field('MRP', shown(money(r.MRP)))}
-                      {field('P.Rate', shown(money(r.PRate)), Number(r.DiscPercent) ? `less ${Number(r.DiscPercent)}%` : '')}
+                      {field('P.Rate', shown(money(r.PRate)), Number(r.DiscPercent) ? `MRP less ${Number(r.DiscPercent)}%` : '')}
                       {field('Order', <input type="number" inputMode="decimal" min="0" step="any" className={`${mbox} no-spin font-semibold ${p.qty ? bad : ''}`} value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} />, `due ${r.Due}`)}
                       {field('Free', <input type="number" inputMode="decimal" min="0" step="any" className={`${mbox} no-spin ${p.free ? bad : ''}`} value={r.free} onChange={(e) => setRow(i, { free: e.target.value })} />, `due ${r.FreeDue}`)}
                       {field('Batch', <input className={`${mbox} ${p.batchNo ? bad : ''}`} placeholder="Batch" value={r.batchNo} onChange={(e) => setRow(i, { batchNo: e.target.value })} />)}
@@ -557,6 +628,7 @@ export default function StockIn() {
           <List size={16} /> View List
         </button>
       </PhoneFooter>
+      <ScanBillModal open={scanOpen} onClose={() => setScanOpen(false)} forStock onStockLines={fillFromBill} />
       <Toast toast={toast} />
     </div>
   );

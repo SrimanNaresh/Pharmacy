@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
 });
 
 // The Old Price column: each item's rate on this vendor's latest earlier order,
-// net of its discount (P.Rate less Disc %, the line's Rate), as { itemId: rate }.
+// its P.Rate (MRP less Disc %, the line's Rate), as { itemId: rate }.
 // ?excludeOrderId= leaves out the order being edited; items this vendor never
 // supplied aren't in it.
 router.get('/last-rates', async (req, res) => {

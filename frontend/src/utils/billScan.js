@@ -161,7 +161,8 @@ export function parseItemLine(input, lead = null, mfrX = null, needFigures = tru
   if (letters(text) < 3 || !/[A-Za-z]{3,}/.test(text)) return null;
   // A bold header OCR couldn't read comes out as bits: "SUED KN EE EY IEE FY ER CA".
   const parts = text.split(' ');
-  if (parts.length >= 4 && parts.filter((p) => p.length <= 2).length >= parts.length / 2) return null;
+  // (A strength like "6X" or "3C" isn't such a bit: "SCH BIO MP 6X".)
+  if (parts.length >= 4 && parts.filter((p) => p.length <= 2 && !/\d/.test(p)).length >= parts.length / 2) return null;
   // OCR noise: mostly symbols, or one long word of random case.
   const clean = text.replace(/[^A-Za-z0-9 ]/g, '');
   if (clean.length < text.length * 0.7) return null;
@@ -348,17 +349,110 @@ const priceOf = (t, decimals) => {
   return Number.isFinite(n) ? n : null;
 };
 
+// OCR reads two figures printed close together as one word: "175.0035.00"
+// (MRP + discount), "12/27/33049910" (expiry + HSN). Split it, each part
+// given its share of the word's width, so each lands in its own column.
+function unglue(w) {
+  const t = w.t.replace(/^[^\d]+|[^\d]+$/g, '');
+  let parts = null;
+  const dec = t.match(/\d+[.,]\d{2}/g);
+  if (dec && dec.length > 1 && dec.join('').length >= t.replace(/[^\d.,]/g, '').length - 1) parts = dec;
+  const exp = /^(\d{1,2}\/\d{2})\D?(\d{4,8})$/.exec(t);
+  if (exp) parts = [exp[1], exp[2]];
+  if (!parts) return [w];
+  const per = (w.x1 - w.x) / w.t.length;
+  let at = 0;
+  return parts.map((p) => {
+    const i = w.t.indexOf(p, at);
+    at = i + p.length;
+    return { t: p, x: w.x + i * per, x1: w.x + at * per };
+  });
+}
+
+const hasDigit = (t) => /\d/.test(t);
 function rowCells(line, gap) {
   const ws = line
+    .flatMap((w) => (w.x != null && w.x1 != null ? unglue(w) : [w]))
     .map((w) => ({ t: trimTok(cleanLine(w.t)), x: w.x, x1: w.x1 }))
     .filter((w) => w.t && w.x != null && w.x1 != null)
     .sort((a, b) => a.x - b.x);
   const cells = [];
   for (const w of ws) {
     const last = cells[cells.length - 1];
-    if (last && w.x - last.x1 < gap) { last.t += ` ${w.t}`; last.x1 = w.x1; last.words.push(w); } else cells.push({ ...w, words: [w] });
+    // Two figures side by side are two columns ("200" | "100ML", "185.00" | "35.00"),
+    // however close they're printed; words of a name stay together.
+    const twoFigures = last && hasDigit(w.t) && hasDigit(last.words[last.words.length - 1].t);
+    if (last && w.x - last.x1 < gap && !twoFigures) { last.t += ` ${w.t}`; last.x1 = w.x1; last.words.push(w); } else cells.push({ ...w, words: [w] });
   }
   return cells;
+}
+
+// The table's columns from its rows' cells: an x position is inside a column
+// when cells of enough rows cover it; where hardly any row has a cell is the
+// gap between two columns. (Joining every overlapping cell instead chains
+// neighbouring columns together as soon as one row's cell spans both.)
+// Every cell is then given to the one column it overlaps most.
+function findColumns(rows) {
+  const N = 1000;
+  const cov = new Array(N).fill(0);
+  for (const cells of rows) {
+    const hit = new Uint8Array(N);
+    for (const c of cells) for (let b = Math.max(0, Math.floor(c.x * N)); b < Math.min(N, Math.ceil(c.x1 * N)); b += 1) hit[b] = 1;
+    hit.forEach((h, b) => { cov[b] += h; });
+  }
+  const thr = Math.max(1, rows.length * 0.2);
+  let runs = [];
+  for (let b = 0; b < N; b += 1) {
+    if (cov[b] <= thr) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.b1 === b) last.b1 = b + 1; else runs.push({ b0: b, b1: b + 1 });
+  }
+  runs = runs.map((r) => ({ x: r.b0 / N, x1: r.b1 / N }));
+  const overlap = (c, r) => Math.min(c.x1, r.x1) - Math.max(c.x, r.x);
+  const nearest = (cols, c) => cols.reduce((best, r) => {
+    const d = overlap(c, r);
+    return !best || d > best.d ? { r, d } : best;
+  }, null)?.r;
+  // Runs only a few rows have cells in (the tail of a long name) aren't columns.
+  const count = new Map(runs.map((r) => [r, 0]));
+  for (const c of rows.flat()) { const r = nearest(runs, c); if (r) count.set(r, count.get(r) + 1); }
+  let cols = runs.filter((r) => count.get(r) >= Math.max(2, rows.length / 3)).map((r) => ({ ...r, cells: [] }));
+  const assign = () => {
+    cols.forEach((c) => { c.cells = []; });
+    for (const cells of rows) for (const c of cells) { c.col = nearest(cols, c); c.col?.cells.push(c); }
+  };
+  assign();
+  // Figures printed with hardly a space between them (MRP "185.00" and
+  // Disc "35.00") can still come out as one column: split it up.
+  const split = cols.flatMap((col) => {
+    const cuts = crowdCuts(rows.map((cells) => cells.filter((c) => c.col === col)));
+    if (!cuts) return [col];
+    const edges = [col.x, ...cuts, col.x1];
+    return edges.slice(1).map((x1, j) => ({ x: edges[j], x1, cells: [] }));
+  });
+  if (split.length > cols.length) { cols = split; assign(); }
+  return cols;
+}
+
+// One column's words or cells, row by row ([[{ t, x, x1 }]]): when most rows
+// hold two or more separate figures in it, it's really that many columns —
+// returns where to cut it (x positions between them), else null.
+function crowdCuts(groups) {
+  const figs = groups.map((g) => g.filter((w) => /\d/.test(w.t)).sort((a, b) => a.x - b.x)).filter((g) => g.length);
+  if (figs.length < 2) return null;
+  // Only figures (prices, discounts, amounts) — not a name or a batch column.
+  const all = figs.flat();
+  if (all.filter((w) => !/[A-Za-z]{2,}/.test(w.t)).length < all.length * 0.8) return null;
+  const tally = new Map();
+  for (const g of figs) tally.set(g.length, (tally.get(g.length) || 0) + 1);
+  const [k, n] = [...tally].sort((a, b) => b[1] - a[1])[0];
+  if (k < 2 || n < figs.length * 0.5) return null;
+  // Where each figure usually sits (its middle); cut halfway between two.
+  const mids = Array.from({ length: k }, (_, j) => {
+    const at = figs.filter((g) => g.length === k).map((g) => g[j]);
+    return at.reduce((s, w) => s + (w.x + w.x1) / 2, 0) / at.length;
+  });
+  return mids.slice(1).map((m, j) => (mids[j] + m) / 2);
 }
 
 function extractByContent(layout, raw = false) {
@@ -382,17 +476,9 @@ function extractByContent(layout, raw = false) {
   });
   if (rows.length < 2) return null;
 
-  // Columns: cells of different rows that overlap side to side.
-  const spans = rows.flat().map((c) => [c.x, c.x1]).sort((a, b) => a[0] - b[0]);
-  const cols = [];
-  for (const [a, b] of spans) {
-    const last = cols[cols.length - 1];
-    if (last && a < last.x1) last.x1 = Math.max(last.x1, b); else cols.push({ x: a, x1: b });
-  }
-  const cellsIn = (col) => rows.map((cells) => cells.filter((c) => c.x < col.x1 && c.x1 > col.x)).flat();
-  for (const col of cols) col.cells = cellsIn(col);
-  // A column needs cells on at least a third of the rows (not a stray mark).
-  const real = cols.filter((c) => c.cells.length >= Math.max(2, rows.length / 3));
+  // Columns: places where the rows' cells line up (each needs cells on at
+  // least a third of the rows — not a stray mark).
+  const real = findColumns(rows);
 
   // Item Description: the column with the most letters.
   const nameCol = real.reduce((best, c) => {
@@ -414,7 +500,8 @@ function extractByContent(layout, raw = false) {
     if (c) field.set(c, name);
     return c ? right.indexOf(c) : -1;
   };
-  const packAt = pick('pack', (t) => PACKISH.test(t.replace(/\s+/g, '')));
+  // (Also sizes OCR garbled: "BOML", "2OGM", "HOOML" for 30ML, 20GM, 100ML.)
+  const packAt = pick('pack', (t) => PACKISH.test(t.replace(/\s+/g, '')) || /^[\dA-Za-z]{1,4}\s?(ml|gm|g)$/i.test(t));
   const batchAt = pick('category', (t) => /^[A-Za-z0-9\-/]{4,20}$/.test(t) && /\d/.test(t) && !EXP.test(t) && !HSN.test(t) && !/^\d+[.,]\d{2}$/.test(t), 0.5, Math.max(0, packAt + 1));
   pick('hsnCode', (t) => HSN.test(t.replace(/\D/g, '')) && t.replace(/\D/g, '').length >= 6, 0.6);
   const expAt = right.findIndex((col) => !field.has(col) && share(col.cells, (t) => EXP.test(t)) >= 0.5);
@@ -438,7 +525,7 @@ function extractByContent(layout, raw = false) {
     });
     const table = [];
     for (const cells of rows) {
-      const inCol = (col) => cells.filter((c) => c.x < col.x1 && c.x1 > col.x);
+      const inCol = (col) => cells.filter((c) => c.col === col);
       const hit = parseItemLine(inCol(nameCol).flatMap((c) => c.words).flatMap((w) => splitGlued(w.t).split(' ').map((t) => ({ t, x: w.x }))), 0, null, false);
       if (!hit) continue;
       table.push(real.map((col) => (col === nameCol ? hit.name : words(inCol(col).flatMap((c) => c.words)).join(' '))));
@@ -449,7 +536,7 @@ function extractByContent(layout, raw = false) {
   const out = [];
   const seen = new Set();
   for (const cells of rows) {
-    const inCol = (col) => cells.filter((c) => c.x < col.x1 && c.x1 > col.x);
+    const inCol = (col) => cells.filter((c) => c.col === col);
     const nameWords = inCol(nameCol).flatMap((c) => c.words);
     const hit = parseItemLine(nameWords.flatMap((w) => splitGlued(w.t).split(' ').map((t) => ({ t, x: w.x }))), 0, null, false);
     if (!hit) continue;
@@ -540,14 +627,35 @@ const FIELD_LABEL = {
   name: 'Item Description', hsnCode: 'HSN', rack: 'Rack', manufacturer: 'MFR', category: 'Batch', pack: 'Pack', mrp: 'MRP', qty: 'Qty', exp: 'Exp',
 };
 const NOT_WRAP = /\b(total|grand|amount|taxable|net|value|words|remarks)\b/i;
-export function extractBillTable(layout) {
-  if (!layout) return null;
+
+// Under one heading the bill may print two figures ("MRP" over "185.00 35.00",
+// the discount having no heading OCR could read): give each its own column.
+function splitHeads(cols, lines) {
+  const groups = new Map(cols.map((c) => [c, []]));
+  for (const line of lines) {
+    if (line.filter((w) => /\d/.test(w.t)).length < 3) continue;
+    const by = new Map(cols.map((c) => [c, []]));
+    for (const w of line) by.get(columnAt(cols, w)).push(w);
+    for (const c of cols) groups.get(c).push(by.get(c));
+  }
+  return cols.flatMap((c) => {
+    const cuts = c.field === 'name' ? null : crowdCuts(groups.get(c));
+    if (!cuts) return [c];
+    const ends = [...cuts, c.end];
+    return ends.map((end, j) => (j === 0 ? { ...c, end } : { field: null, x: cuts[j - 1], x1: cuts[j - 1], end, t: '' }));
+  });
+}
+
+export function extractBillTable(input) {
+  if (!input) return null;
+  // Figures OCR read as one word ("175.0035.00") split up first.
+  const layout = input.map((l) => l.flatMap((w) => (w.x != null && w.x1 != null ? unglue(w) : [w])));
   let cols = null;
   const rows = [];
   let last = null;
-  for (const line of layout) {
+  for (const [n, line] of layout.entries()) {
     const head = headerColumns(line);
-    if (head) { if (!cols) cols = head; last = null; continue; }
+    if (head) { if (!cols) cols = splitHeads(head, layout.slice(n + 1)); last = null; continue; }
     if (!cols || !line.length) continue;
     const by = new Map(cols.map((c) => [c, []]));
     for (const w of line) by.get(columnAt(cols, w)).push(w);
@@ -574,7 +682,15 @@ export function extractBillTable(layout) {
   const keep = cols.map((c, i) => c.field === 'name' || rows.some((r) => r[i]));
   const seen = new Set();
   const nameAt = cols.findIndex((c) => c.field === 'name');
-  const unique = rows.filter((r) => { const k = compact(r[nameAt]); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  // Only a line repeated exactly (OCR reading it twice) is dropped here: the
+  // same item with another batch is its own line — repeats of Item Name +
+  // HSN + Batch are left out once the columns are matched.
+  const unique = rows.filter((r) => {
+    const k = r.map((c) => compact(c)).join('|');
+    if (!compact(r[nameAt]) || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   return {
     heads: cols.map((c, i) => ({ label: cleanLine(c.t || '') || FIELD_LABEL[c.field] || `Column ${i + 1}`, field: c.field })).filter((_, i) => keep[i]),
     rows: unique.map((r) => r.filter((_, i) => keep[i])),
